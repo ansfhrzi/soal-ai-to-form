@@ -75,6 +75,40 @@ var FormBuilder = (function () {
     catch (e2) { return String(e); }
   }
 
+  /**
+   * Mengambil TEKS kunci jawaban dari nilai apa pun (string, angka, larik).
+   * Larik digabung dengan baris baru karena essay bisa punya beberapa poin
+   * kunci. Mengembalikan '' bila tidak ada teks berarti.
+   */
+  function _teksKunci_(nilai) {
+    if (nilai === null || typeof nilai === 'undefined') return '';
+    if (Array.isArray(nilai)) {
+      return nilai.map(_teksKunci_)
+        .filter(function (x) { return x.length; })
+        .join('\n');
+    }
+    return String(nilai).trim();
+  }
+
+  /**
+   * Pengaman terakhir kunci isian: angka murni yang cocok sebagai indeks ke
+   * larik opsi berisi TEKS hampir pasti adalah INDEKS yang lolos normalisasi,
+   * bukan jawabannya. Angka yang tidak cocok sebagai indeks (mis. jawaban
+   * "32" untuk soal jumlah gigi) dibiarkan apa adanya.
+   */
+  function _kunciIsian_(q) {
+    var kunci = _teksKunci_(q.answerText);
+    var opsi = q.options || [];
+    if (!kunci || (/^-?\d+$/.test(kunci) && opsi.length &&
+                   typeof opsi[parseInt(kunci, 10)] !== 'undefined' &&
+                   String(opsi[parseInt(kunci, 10)]).trim() !== kunci)) {
+      var dariOpsi = _teksKunci_(opsi[(q.correct && q.correct.length) ? q.correct[0] : 0]);
+      if (dariOpsi) kunci = dariOpsi;
+      else if (!kunci) kunci = _teksKunci_(opsi[0]);
+    }
+    return kunci;
+  }
+
   /* ====================== SETELAN FORM YANG AMAN ======================== */
 
   /**
@@ -130,7 +164,13 @@ var FormBuilder = (function () {
       return String(o == null ? '' : o).trim();
     }).filter(function (o) { return o.length; });
 
-    var correct = (q.correctIdx || q.benar || q.correct || []).map(function (c) {
+    /* `benar`/`correct` bisa datang sebagai larik INDEKS ([1]), angka tunggal
+       (0), atau TEKS ('Empedu') dari payload AI mentah. `.map()` langsung pada
+       nilai non-larik melempar TypeError yang MEMBATALKAN seluruh pembuatan
+       form, jadi bentuknya dinormalkan dulu. */
+    var rawCorrect = q.correctIdx || q.benar || q.correct || [];
+    if (!Array.isArray(rawCorrect)) rawCorrect = [rawCorrect];
+    var correct = rawCorrect.map(function (c) {
       return typeof c === 'number' ? Math.round(c) : parseInt(String(c).trim(), 10);
     }).filter(function (c) { return !isNaN(c) && c >= 0 && c < options.length; });
 
@@ -139,11 +179,31 @@ var FormBuilder = (function () {
     var points = Number(q.points || q.poin || 1);
     if (!isFinite(points) || points < 0) points = 1;
 
-    var rawBenar = q.correctIdx || q.benar || q.correct || q.answerText || [];
-    if (!Array.isArray(rawBenar)) rawBenar = [rawBenar];
-    var answerText = (type === 'isian' || type === 'essay')
-      ? String(rawBenar[0] == null ? '' : rawBenar[0]).trim()
-      : '';
+    /* ---- kunci jawaban berbentuk TEKS untuk isian & essay ----
+       BUG LAMA: `q.correctIdx || q.benar || q.correct || q.answerText`
+       mendahulukan correctIdx, yang isinya ANGKA INDEKS ([0]). Indeks itu
+       di-String menjadi "0", lalu addItems_ memakainya sebagai kunci karena
+       "0" truthy — sehingga fallback ke options[correct[0]] tidak pernah
+       jalan. Hasilnya: setiap soal isian di Google Form menuntut siswa
+       mengetik "0" (atau "1", "2", …) sebagai jawaban benar, dan spreadsheet
+       kunci ikut salah. Teks jawaban harus dicari LEBIH DULU. */
+    var answerText = '';
+    if (type === 'isian' || type === 'essay') {
+      var sumberTeks = [q.answerText, q.jawaban, q.answer, q.kunciTeks, q.benarTeks];
+      for (var si = 0; si < sumberTeks.length && !answerText; si++) {
+        answerText = _teksKunci_(sumberTeks[si]);
+      }
+      if (!answerText) {
+        /* `benar`/`correct` bisa TEKS ("pepsin") atau INDEKS (0). Ambil hanya
+           bila bukan angka murni; angka murni adalah indeks → teksnya diambil
+           dari options di bawah. */
+        var mentah = _teksKunci_(q.benar != null ? q.benar : q.correct);
+        if (mentah && !/^-?\d+$/.test(mentah)) answerText = mentah;
+      }
+      if (!answerText && options.length) {
+        answerText = String(options[correct.length ? correct[0] : 0] || options[0] || '').trim();
+      }
+    }
 
     return {
       n: i + 1,
@@ -161,10 +221,72 @@ var FormBuilder = (function () {
 
   /* ====================== PENAMBAHAN ITEM KE FORM ====================== */
 
+  /**
+   * Memasang opsi + KUNCI JAWABAN pada item pilihan.
+   *
+   * INI PENYEBAB "kunci jawaban kosong di Form": `setChoiceValues(values)`
+   * hanya menulis teks opsi — ia TIDAK punya parameter isCorrect, jadi Form
+   * mendapat soal berpoin tetapi tanpa kunci, dan Google Forms tidak bisa
+   * menilainya. Satu-satunya cara menandai jawaban benar adalah membuat objek
+   * Choice lewat `item.createChoice(value, isCorrect)` lalu memasangnya dengan
+   * `item.setChoices(choices)`.
+   *
+   * Catatan: kunci jawaban hanya berlaku bila Form dalam mode Kuis, jadi
+   * `kunciAktif` harus mencerminkan apakah setIsQuiz(true) benar-benar berhasil.
+   *
+   * Setelah dipasang, hasilnya DIVERIFIKASI ulang lewat getChoices()/isCorrect()
+   * — panggilan yang "sukses" tetapi tidak tersimpan harus ketahuan di sini,
+   * bukan saat guru membuka Form dan menemukan kuncinya kosong.
+   *
+   * @return {Boolean} true bila kunci jawaban terpasang & terverifikasi.
+   */
+  function _pasangChoices_(item, pairs, kunciAktif) {
+    var values = pairs.map(function (p) { return p.text; });
+    var seharusnyaAdaKunci = !!kunciAktif && pairs.some(function (p) { return p.correct; });
+
+    if (seharusnyaAdaKunci &&
+        typeof item.createChoice === 'function' && typeof item.setChoices === 'function') {
+      try {
+        var choices = pairs.map(function (p) { return item.createChoice(p.text, !!p.correct); });
+        item.setChoices(choices);
+
+        /* Baca-ulang HANYA untuk diagnostik. Bila isCorrect() kebetulan tidak
+           terbaca, JANGAN jatuh ke setChoiceValues: itu akan MENGHAPUS kunci
+           yang sebenarnya sudah terpasang, dan mengubah masalah kecil menjadi
+           kunci jawaban kosong di seluruh form. */
+        try {
+          var terbaca = (typeof item.getChoices === 'function') ? item.getChoices() : null;
+          if (terbaca && terbaca.length) {
+            var adaBenar = terbaca.some(function (c) {
+              return !!(c && typeof c.isCorrect === 'function' && c.isCorrect());
+            });
+            if (!adaBenar) {
+              _log_('kunci_tidak_terverifikasi', { opsi: values.length });
+            }
+          }
+        } catch (eCek) { /* diagnostik gagal ≠ kunci gagal */ }
+
+        return true;                       /* setChoices tidak melempar → terpasang */
+      } catch (e) { /* lanjut ke setChoiceValues di bawah */ }
+    }
+
+    /* Tanpa mode Kuis (atau createChoice tidak tersedia): opsi saja.
+       Kunci memang tidak bisa disimpan pada form non-kuis. */
+    try { item.setChoiceValues(values); } catch (e2) {}
+    return false;
+  }
+
+  /** Log diagnostik opsional; tidak boleh menggagalkan apa pun. */
+  function _log_(tag, data) {
+    try { if (typeof log_ === 'function') log_('formbuilder:' + tag, data || {}); }
+    catch (e) { /* abaikan */ }
+  }
+
   function addItems_(form, questions, opts) {
     var meta = [];
+    var tanpaKunci = 0;
     questions.forEach(function (q) {
-      var item = null, jawabanBenar = '';
+      var item = null, jawabanBenar = '', kunciTerpasang = false;
 
       if (q.type === 'pg' || q.type === 'pg_kompleks' || q.type === 'dropdown') {
         var pairs = q.options.map(function (text, i) {
@@ -172,20 +294,19 @@ var FormBuilder = (function () {
         });
         if (opts.acakOpsi) pairs = shuffle_(pairs);
 
-        var values = pairs.map(function (p) { return p.text; });
         var correctTexts = pairs.filter(function (p) { return p.correct; }).map(function (p) { return p.text; });
         jawabanBenar = correctTexts.join(' | ');
 
         if (q.type === 'pg') {
           item = form.addMultipleChoiceItem();
-          item.setChoiceValues(values);
+          kunciTerpasang = _pasangChoices_(item, pairs, opts.quizAktif);
           item.setFeedbackForCorrect(
             FormApp.createFeedback().setText(feedbackText_(q, correctTexts[0] || '')).build());
           item.setFeedbackForIncorrect(
             FormApp.createFeedback().setText(feedbackWrongText_(q, correctTexts[0] || '')).build());
         } else if (q.type === 'pg_kompleks') {
           item = form.addCheckboxItem();
-          item.setChoiceValues(values);
+          kunciTerpasang = _pasangChoices_(item, pairs, opts.quizAktif);
           item.setHelpText('Pilih ' + correctTexts.length + ' jawaban yang benar.');
           item.setFeedbackForCorrect(
             FormApp.createFeedback().setText(feedbackText_(q, correctTexts.join(', '))).build());
@@ -193,21 +314,31 @@ var FormBuilder = (function () {
             FormApp.createFeedback().setText(feedbackWrongText_(q, correctTexts.join(', '))).build());
         } else {
           item = form.addListItem();
-          item.setChoiceValues(values);
+          kunciTerpasang = _pasangChoices_(item, pairs, opts.quizAktif);
           item.setFeedbackForCorrect(
             FormApp.createFeedback().setText(feedbackText_(q, correctTexts[0] || '')).build());
           item.setFeedbackForIncorrect(
             FormApp.createFeedback().setText(feedbackWrongText_(q, correctTexts[0] || '')).build());
         }
+
+        /* Soal pilihan yang seharusnya punya kunci tetapi kuncinya tidak
+           terpasang harus TERHITUNG, bukan lolos diam-diam. */
+        if (opts.quizAktif && correctTexts.length && !kunciTerpasang) tanpaKunci++;
       } else if (q.type === 'isian') {
         item = form.addTextItem();
-        var kunci = String(q.answerText || (q.options[q.correct[0]] || q.options[0] || '') || '').trim();
+        /* Kunci isian adalah TEKS. _kunciIsian_ melindungi dari sisa kasus
+           di mana yang sampai ke sini masih berupa angka indeks. */
+        var kunci = _kunciIsian_(q);
         jawabanBenar = kunci;
         if (kunci && opts.pakaiValidasiIsian !== false) {
           // Catatan: validasi Google Forms bersifat case-sensitive.
-          var v = FormApp.createTextValidation().requireTextEqualTo(kunci);
-          item.setValidation(v.setHelpText('Jawaban harus tepat: ' + kunci).build());
+          try {
+            var v = FormApp.createTextValidation().requireTextEqualTo(kunci);
+            item.setValidation(v.setHelpText('Jawaban harus tepat: ' + kunci).build());
+            kunciTerpasang = true;
+          } catch (eVal) { /* opsi tetap ada, kunci dilaporkan hilang */ }
         }
+        if (opts.quizAktif && !kunciTerpasang) tanpaKunci++;
         item.setFeedbackForCorrect(
           FormApp.createFeedback().setText(feedbackText_(q, kunci)).build());
       } else { // essay
@@ -233,9 +364,10 @@ var FormBuilder = (function () {
         try { item.setPoints(q.points); } catch (e) { /* item tanpa nilai (essay) */ }
       }
 
-      meta.push({ type: q.type, item: item, jawaban: jawabanBenar, q: q });
+      meta.push({ type: q.type, item: item, jawaban: jawabanBenar, q: q,
+                  kunciTerpasang: kunciTerpasang });
     });
-    return meta;
+    return { meta: meta, tanpaKunci: tanpaKunci };
   }
 
   function feedbackText_(q, kunci) {
@@ -265,8 +397,14 @@ var FormBuilder = (function () {
     var rows = questions.map(function (q) {
       var opsi = q.options.map(function (o, i) { return huruf_(i) + '. ' + o; }).join('\n');
       var kunci = q.correct.map(function (i) { return huruf_(i); }).join(', ');
-      if (q.type === 'isian') kunci = q.answerText || q.options[0] || '-';
-      if (q.type === 'essay') kunci = (q.answerText ? q.answerText + '\n\n' : '') + '(dinilai manual)';
+      /* Spreadsheet kunci harus memuat TEKS jawaban yang sama dengan yang
+         dipasang di Form — jangan sampai Form menuntut "pepsin" sementara
+         lembar kunci menulis "0". */
+      if (q.type === 'isian') kunci = _kunciIsian_(q) || '-';
+      if (q.type === 'essay') {
+        var pk = _teksKunci_(q.answerText);
+        kunci = (pk ? pk + '\n\n' : '') + '(dinilai manual)';
+      }
       return [q.n, LABEL_TIPE[q.type] || q.type, q.text, opsi, kunci, q.points, q.level, q.explanation];
     });
     if (rows.length) sh.getRange(2, 1, rows.length, header.length).setValues(rows);
@@ -399,8 +537,10 @@ var FormBuilder = (function () {
 
     if (opts.isQuiz) {
       /* setIsQuiz harus jalan SEBELUM item ditambah: tanpa mode Kuis,
-         item.setPoints() dan umpan balik tidak berlaku. */
-      _setOpt_(form, ['setIsQuiz'], true, 'mode Kuis', dilewati);
+         item.setPoints() dan kunci jawaban (createChoice(value, isCorrect))
+         tidak berlaku. Karena itu hasilnya DISIMPAN — addItems_ perlu tahu
+         apakah kunci jawaban memang bisa dipasang. */
+      opts.quizAktif = _setOpt_(form, ['setIsQuiz'], true, 'mode Kuis', dilewati);
       _setOpt_(form, ['setShowLinkToRespondAgain'], false, 'sembunyikan link "Isi lagi"', dilewati);
     }
     _setOpt_(form, ['setShuffleQuestions', 'setShuffleQuestionOrder'],
@@ -428,8 +568,9 @@ var FormBuilder = (function () {
     /* Soal ditulis ke Form. Bila salah satu item gagal, Form-nya SUDAH ada di
        Drive — jangan biarkan guru kehilangan jejaknya, sertakan link edit pada
        pesan error supaya bisa diperiksa/dilanjutkan manual. */
+    var hasilItem = { meta: [], tanpaKunci: 0 };
     try {
-      addItems_(form, questions, opts);
+      hasilItem = addItems_(form, questions, opts) || hasilItem;
     } catch (eItem) {
       var linkForm = '';
       try { linkForm = form.getEditUrl(); } catch (e2) {}
@@ -447,6 +588,19 @@ var FormBuilder = (function () {
        Form-nya tetap sah dan lengkap — melaporkan seluruh build sebagai gagal
        akan menyembunyikan link ke form yang sebenarnya sudah jadi. */
     var key = null, peringatanBuild = '';
+
+    /* Kunci yang tidak terpasang di Form adalah cacat NYATA pada hasil utama
+       (Form tidak bisa menilai otomatis), jadi harus dilaporkan keras — bukan
+       dibiarkan lolos seperti sebelumnya. */
+    if (hasilItem.tanpaKunci) {
+      peringatanBuild = hasilItem.tanpaKunci + ' soal pilihan TIDAK memiliki kunci jawaban di Form. ' +
+        (opts.quizAktif
+          ? 'Buka editor Form → klik soal → tab "Kunci jawaban" → tandai jawaban benar.'
+          : 'Penyebabnya: mode Kuis gagal diaktifkan pada Form ini, sehingga Google Forms menolak ' +
+            'menyimpan kunci. Aktifkan "Jadikan ini kuis" di Pengaturan Form, lalu isi kuncinya.') +
+        ' Kunci juga tersedia di spreadsheet kunci jawaban.';
+    }
+
     if (opts.buatKunci) {
       try {
         key = createKeySpreadsheet_(folder, title, questions, {
@@ -456,8 +610,10 @@ var FormBuilder = (function () {
           formPublishUrl: form.getPublishedUrl()
         });
       } catch (eKey) {
-        peringatanBuild = 'Form berhasil dibuat, tetapi spreadsheet kunci jawaban gagal: ' +
-          _pesan_(eKey);
+        /* Ditambahkan, bukan menimpa: peringatan kunci yang tidak terpasang
+           lebih penting dan tidak boleh hilang oleh kegagalan spreadsheet. */
+        peringatanBuild = (peringatanBuild ? peringatanBuild + ' ' : '') +
+          'Form berhasil dibuat, tetapi spreadsheet kunci jawaban gagal: ' + _pesan_(eKey);
       }
     }
 
@@ -482,6 +638,11 @@ var FormBuilder = (function () {
          yang harus diklik manual di editor Form. */
       dilewati: dilewati,
       peringatan: peringatanBuild,
+      /* Berapa soal pilihan yang kuncinya benar-benar terpasang & terverifikasi
+         di Form. Angka ini yang membuat "kunci jawaban kosong" tidak bisa lagi
+         lolos tanpa terdeteksi. */
+      soalBerkunci: questions.length - (hasilItem.tanpaKunci || 0),
+      tanpaKunci: hasilItem.tanpaKunci || 0,
       kunci: key
     };
   }
@@ -491,6 +652,9 @@ var FormBuilder = (function () {
     resolveFolder_: resolveFolder_,
     extractId_: extractId_,
     normQuestion_: normQuestion_,
+    _kunciIsian_: _kunciIsian_,
+    _teksKunci_: _teksKunci_,
+    _pasangChoices_: _pasangChoices_,
     _setOpt_: _setOpt_,
     LABEL_TIPE: LABEL_TIPE
   };

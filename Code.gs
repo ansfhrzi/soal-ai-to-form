@@ -380,11 +380,14 @@ function onSetup() {
   if (!props.getProperty('AI_MODEL')) props.setProperty('AI_MODEL', defaultModelFor_('gemini'));
 
   // Pancing otorisasi scope Drive / Forms / Spreadsheet.
+  // Pakai createChoice(value, isCorrect) + setChoices() agar uji ini sekaligus
+  // melatih jalur pemasangan KUNCI JAWABAN yang sebenarnya, bukan setChoiceValues
+  // yang hanya menulis opsi tanpa kunci.
   var f = FormApp.create('__cek_scope_hapus_saya__');
   f.setIsQuiz(true).setShowLinkToRespondAgain(false);
-  f.addMultipleChoiceItem().setTitle('Contoh').setChoiceValues(['A', 'B']).setFeedbackForCorrect(
-    FormApp.createFeedback().setText('Benar!').build()
-  );
+  var itCek = f.addMultipleChoiceItem().setTitle('Contoh');
+  itCek.setChoices([itCek.createChoice('A', true), itCek.createChoice('B', false)]);
+  itCek.setFeedbackForCorrect(FormApp.createFeedback().setText('Benar!').build());
   var folder = FormBuilder.resolveFolder_('');
   var file = folder.createFile('__cek_scope_hapus_saya__.txt', 'ok', MimeType.PLAIN_TEXT);
   var ss = SpreadsheetApp.create('__cek_scope_hapus_saya__');

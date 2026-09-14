@@ -686,6 +686,14 @@
         ? '<br><b>Catatan:</b> setelan ini tidak bisa diterapkan otomatis, atur manual di ' +
           'editor Form → ' + esc(r.dilewati.join(', ')) + '.'
         : '') +
+      /* Status kunci jawaban ditampilkan eksplisit: inilah yang dulu lolos
+         tanpa terdeteksi (form jadi, poin ada, tapi kunci kosong). */
+      (typeof r.tanpaKunci !== 'undefined'
+        ? '<br>' + (r.tanpaKunci
+          ? '<b>Perhatian:</b> ' + r.tanpaKunci + ' soal pilihan TANPA kunci jawaban di Form.'
+          : 'Kunci jawaban terpasang & terverifikasi — ' + r.soalBerkunci +
+            ' soal akan dinilai otomatis oleh Google Forms.')
+        : '') +
       (r.peringatan ? '<br><b>Peringatan:</b> ' + esc(r.peringatan) : '') +
       (r.demo ? '<br><b>Deploy ke Apps Script agar form benar-benar dibuat.</b>' : '') +
       '</div>';
