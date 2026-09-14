@@ -12,11 +12,25 @@
   /* ========================== 0. KONEKSI GAS ========================== */
   var GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? google.script.run : null;
 
+  /**
+   * Pembungkus google.script.run.
+   *
+   * KONVENSI (dipakai SEMUA pemanggil di file ini):
+   *   srv('namaFungsi').run(arg1, arg2, …, onSukses, onGagal)
+   * — callback SUKSES lebih dulu, callback GAGAL paling akhir.
+   *
+   * Karena callback diambil dengan `pop()` (dari ujung larik), yang keluar
+   * PERTAMA adalah callback terakhir = onGagal, lalu onSukses. Menukar urutan
+   * pop ini membuat withSuccessHandler menerima onGagal: setiap panggilan yang
+   * BERHASIL di server malah menjalankan handler error di browser. Gejalanya
+   * persis "tidak bisa menyimpan API key" — key-nya sebenarnya sudah masuk
+   * Script Properties, tetapi UI tidak pernah memperbarui state.config.
+   */
   function srv(fn) {
     return {
       run: function () {
         var args = Array.prototype.slice.call(arguments);
-        var onOk = args.pop(), onErr = args.pop();
+        var onErr = args.pop(), onOk = args.pop();
         if (!GAS) { if (typeof onErr === 'function') onErr(new Error('DEMO')); return; }
         GAS.withSuccessHandler(onOk).withFailureHandler(onErr)[fn].apply(null, args);
       }
@@ -715,10 +729,16 @@
   }
 
   function paintConfig() {
-    var c = state.config;
+    var c = state.config || {};
+    /* Jangan sampai satu field yang hilang melempar TypeError dan membuat
+       SELURUH panel gagal digambar — gejalanya terlihat seperti "key tidak
+       tersimpan" padahal sudah. */
+    var rotasi = (c.modelRotasi && c.modelRotasi.length)
+      ? c.modelRotasi
+      : (((c.defaultModels || {}).gemini) || []);
     $('s-provider').value = c.provider || 'gemini';
     $('s-model').value = c.autoRotate ? '' : (c.model || '');
-    $('s-model').placeholder = 'auto — rotasi: ' + ((c.modelRotasi || c.defaultModels.gemini || []).slice(0, 3).join(' → ')) + ' …';
+    $('s-model').placeholder = 'auto — rotasi: ' + rotasi.slice(0, 3).join(' → ') + ' …';
     $('s-baseurl').value = c.baseUrl || '';
     $('baseUrlField').hidden = (c.provider !== 'openai');
 
@@ -860,7 +880,7 @@
     }
 
     srv('saveAiConfig').run(cfg, function (res) {
-      state.config = res;
+      state.config = res || state.config;
       $('s-keys').value = '';
       paintConfig();
       toast(keys.length
@@ -868,7 +888,13 @@
         : 'Pengaturan tersimpan di Script Properties.', 'ok');
       if (res && res.peringatan) toast('Peringatan: ' + res.peringatan, 'warn');
       try { refreshKeyStatus(); } catch (e) { /* status gagal ≠ simpan gagal */ }
-    }, function (err) { toast('Gagal menyimpan: ' + errText(err), 'err'); });
+    }, function (err) {
+      toast('Gagal menyimpan: ' + errText(err), 'err');
+      /* Jangan biarkan panel berbohong: key bisa saja SUDAH masuk Script
+         Properties sebelum error terjadi (mis. error dari pemanggilan setelah
+         simpanKeys). Muat ulang status supaya UI menampilkan keadaan nyata. */
+      try { refreshKeyStatus(); } catch (e) { /* abaikan */ }
+    });
   }
 
   function testConnection() {

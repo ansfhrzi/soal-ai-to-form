@@ -162,10 +162,15 @@ function saveAiConfig(cfg) {
     if (bersih.length) AiService.simpanKeys(bersih, provider);
   }
 
+  /* Key SUDAH tersimpan pada titik ini. Apa pun yang terjadi setelahnya
+     (mis. statusKeys gagal karena scope CacheService) tidak boleh membuat
+     pemanggil mengira penyimpanan gagal. */
+  var jml = 0;
+  try { jml = AiService.statusKeys(provider).jml; } catch (e) { jml = -1; }
   log_('saveAiConfig', {
     provider: provider,
     model: cfg.model || '(rotasi)',
-    jmlKey: AiService.statusKeys(provider).jml
+    jmlKey: jml
   });
   return getAiConfig();
 }
