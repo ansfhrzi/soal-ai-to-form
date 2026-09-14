@@ -563,6 +563,42 @@
   }
 
   /* ========================== 9. BUILD FORM ========================== */
+  /**
+   * Kumpulan opsi biodata Bagian 1 (Nama, Kelas, Nomor).
+   * Label yang dikosongkan guru TIDAK dikirim, sehingga kolomnya hilang dari
+   * Form — bukan muncul dengan judul kosong.
+   */
+  function collectBiodata() {
+    var elAktif = $('g-biodata');
+    var elWajib = $('g-bio-wajib');
+    var spec = collectSpec();
+    var def = [
+      { id: 'nama',  el: 'g-bio-nama',  helpText: 'Tulis nama lengkap sesuai absen.' },
+      { id: 'kelas', el: 'g-bio-kelas', helpText: spec.kelas ? ('Contoh: ' + spec.kelas) : 'Contoh: VIII-A' },
+      { id: 'nomor', el: 'g-bio-nomor', helpText: 'Tulis angka saja, contoh: 12' }
+    ];
+    var fields = [];
+    def.forEach(function (d) {
+      var el = $(d.el);
+      var label = el ? String(el.value || '').trim() : '';
+      if (label) fields.push({ id: d.id, label: label, helpText: d.helpText });
+    });
+    var j1 = $('g-bio-judul1'), j2 = $('g-bio-judul2');
+    return {
+      aktif: !!(elAktif && elAktif.checked) && fields.length > 0,
+      wajib: !!(elWajib && elWajib.checked),
+      fields: fields,
+      judulBagian1: j1 ? String(j1.value || '').trim() : '',
+      judulBagian2: j2 ? String(j2.value || '').trim() : ''
+    };
+  }
+
+  /** Sembunyikan kotak label biodata bila fiturnya dimatikan. */
+  function sinkronBiodata() {
+    var box = $('bioBox'), cb = $('g-biodata');
+    if (box && cb) box.hidden = !cb.checked;
+  }
+
   function collectFormOptions() {
     var spec = collectSpec();
     return {
@@ -592,6 +628,7 @@
         collectEmail: $('g-collectEmail').checked,
         showProgressBar: $('g-progress').checked,
         pakaiValidasiIsian: $('g-validasiIsian').checked,
+        biodata: collectBiodata(),
         meta: state.meta
       }
     };
@@ -627,6 +664,12 @@
           jumlahSoal: payload.questions.length,
           totalPoin: payload.questions.reduce(function (a, q) { return a + Number(q.points || 0); }, 0),
           breakdown: countTypes(payload.questions),
+          biodata: payload.form.biodata && payload.form.biodata.aktif ? {
+            jumlah: payload.form.biodata.fields.length,
+            kolom: payload.form.biodata.fields.map(function (f) { return f.label; }),
+            wajib: payload.form.biodata.wajib,
+            gagal: []
+          } : null,
           kunci: { url: 'https://docs.google.com/spreadsheets/d/DEMO/edit' }
         });
       }, 1100);
@@ -680,6 +723,13 @@
       '</div>' +
       '<div class="meta">' + esc(r.title || '') + ' · ' + r.jumlahSoal + ' soal · ' + r.totalPoin + ' poin' +
       (breakdown ? '<br>' + esc(breakdown) : '') +
+      /* Susunan bagian: guru perlu yakin biodata ada di Bagian 1 dan soal di
+         Bagian 2 sebelum link form dibagikan ke siswa. */
+      (r.biodata && r.biodata.jumlah
+        ? '<br>Susunan form: <b>Bagian 1</b> → ' + esc(r.biodata.kolom.join(' · ')) +
+          (r.biodata.wajib ? ' (wajib diisi)' : '') +
+          ' &nbsp;|&nbsp; <b>Bagian 2</b> → ' + r.jumlahSoal + ' soal'
+        : '') +
       /* Setelan yang dilewati tidak menggagalkan form, tetapi guru perlu tahu
          apa yang harus diklik manual di editor Form. */
       (r.dilewati && r.dilewati.length
@@ -1108,14 +1158,17 @@
 
     // panel 3
     $('btnBuild').addEventListener('click', buildForm);
+    if ($('g-biodata')) {
+      $('g-biodata').addEventListener('change', sinkronBiodata);
+      sinkronBiodata();
+    }
     $('btnSaveKey').addEventListener('click', saveConfig);
     $('btnTest').addEventListener('click', testConnection);
     $('btnListModels').addEventListener('click', listModels);
     $('btnClearKey').addEventListener('click', clearKey);
     $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
     $('btnResetCooldown').addEventListener('click', resetCooldown);
-    $('s-provider').addEventListener('change', function () {
-      $('baseUrlField').hidden = this.value !== 'openai';
+    $('s-provider').addEventListener('change', function () {      $('baseUrlField').hidden = this.value !== 'openai';
       fillModelDatalist(this.value);
       $('s-model').value = this.value === 'openai' ? 'gpt-4o-mini' : '';
       $('s-keys').placeholder = this.value === 'openai'

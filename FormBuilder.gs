@@ -25,6 +25,132 @@ var FormBuilder = (function () {
     essay: 'Essay / Uraian'
   };
 
+  /* ====================== BIODATA (BAGIAN 1) ============================ */
+
+  /**
+   * Kolom biodata bawaan. Urutan larik = urutan kemunculan di Bagian 1.
+   * Label bisa diganti (atau dikosongkan untuk membuang kolom) dari UI.
+   *
+   * `id` dipakai sebagai kunci saat client mengirim label pengganti, jadi
+   * jangan diubah tanpa menyesuaikan JavaScript.html.
+   */
+  var BIODATA_BAWAAN = [
+    { id: 'nama',  label: 'Nama Lengkap', helpText: 'Tulis nama lengkap sesuai absen.' },
+    { id: 'kelas', label: 'Kelas',        helpText: 'Contoh: VIII-A' },
+    { id: 'nomor', label: 'Nomor Absen',  helpText: 'Tulis angka saja, contoh: 12' }
+  ];
+
+  /**
+   * Menormalkan opsi biodata dari payload client.
+   *
+   * Terima dua bentuk agar pemanggil lama maupun UI baru sama-sama jalan:
+   *   { biodata: { nama:'Nama Lengkap', kelas:'Kelas', nomor:'Nomor Absen' } }
+   *   { biodata: { fields: [{id,label,helpText}, …] } }
+   *
+   * Label yang dikosongkan ⇒ kolom itu dibuang (guru bisa minta Nama + Kelas
+   * saja, misalnya).
+   */
+  function _normBiodata_(o) {
+    var s = (o && (o.biodata || o.identitas)) || {};
+    var fields = [];
+
+    if (Array.isArray(s.fields) && s.fields.length) {
+      fields = s.fields.map(function (f, i) {
+        f = f || {};
+        var d = BIODATA_BAWAAN[i] || {};
+        /* `label` diutamakan, `nama` diterima sebagai alias. Keduanya bisa
+           null/undefined — jangan sampai String(undefined) menghasilkan teks
+           "undefined" sebagai judul kolom di Form. */
+        var lab = (f.label != null) ? f.label : ((f.nama != null) ? f.nama : d.label);
+        return {
+          id: String(f.id || d.id || ('kolom' + i)),
+          label: String(lab == null ? ('Kolom ' + (i + 1)) : lab).trim(),
+          helpText: String(f.helpText || f.petunjuk || d.helpText || '').trim()
+        };
+      });
+    } else {
+      /* Bentuk ringkas {nama, kelas, nomor}. Bedakan dua hal yang mirip:
+           - key TIDAK dikirim (undefined/null) ⇒ pakai label bawaan
+           - key dikirim KOSONG ('')            ⇒ guru memang membuang kolom itu
+         Menyamakan keduanya membuat `{aktif:true}` tanpa label menghasilkan
+         form tanpa biodata sama sekali — kebalikan dari maksudnya. */
+      fields = BIODATA_BAWAAN.map(function (d) {
+        var dikirim = (s[d.id] !== undefined && s[d.id] !== null);
+        return {
+          id: d.id,
+          label: dikirim ? String(s[d.id]).trim() : d.label,
+          helpText: d.helpText
+        };
+      });
+    }
+
+    /* Buang kolom tanpa label, lalu pastikan minimal ada satu kolom bila
+       biodata diminta aktif. */
+    fields = fields.filter(function (f) { return f.label; });
+
+    /* `aktif` default NYALA (s.aktif !== false), mengikuti konvensi opsi lain
+       di file ini seperti `isQuiz: o.isQuiz !== false`. Artinya pemanggil yang
+       tidak menyebut biodata sama sekali tetap mendapat Bagian 1 berisi
+       identitas — itu memang perilaku yang diminta untuk aplikasi ini.
+       Biodata mati bila diminta eksplisit (aktif:false) ATAU bila semua label
+       dikosongkan guru, sehingga tidak ada kolom yang bisa ditulis. */
+    var aktif = s.aktif !== false && fields.length > 0;
+
+    return {
+      aktif: aktif && fields.length > 0,
+      wajib: s.wajib !== false,
+      fields: fields,
+      judulBagian1: String(s.judulBagian1 == null ? 'Biodata Peserta' : s.judulBagian1).trim(),
+      judulBagian2: String(s.judulBagian2 == null ? 'Bagian 2 · Soal' : s.judulBagian2).trim(),
+      pakaiHeader: s.pakaiHeader !== false
+    };
+  }
+
+  /**
+   * Menulis kolom biodata ke Bagian 1.
+   *
+   * Item biodata SENGAJA tidak diberi poin, kunci jawaban, maupun validasi —
+   * ini identitas peserta, bukan soal. Memberinya poin akan merusak total poin
+   * kuis dan membuat Google Forms menagih "kunci jawaban" yang tidak ada.
+   *
+   * Kegagalan per kolom dicatat, tidak dilempar: satu kolom yang bermasalah
+   * tidak boleh menggagalkan seluruh form.
+   *
+   * @return {Object} {jumlah, gagal:[label…]}
+   */
+  function addBiodata_(form, bio, dilewati) {
+    var jumlah = 0, gagal = [];
+
+    /* Header Bagian 1 — opsional. SectionHeaderItem adalah item tata letak
+       (bukan pertanyaan) sehingga tidak ikut dinilai. */
+    if (bio.pakaiHeader && bio.judulBagian1) {
+      try {
+        var hdr = form.addSectionHeaderItem();
+        hdr.setTitle(bio.judulBagian1);
+        hdr.setHelpText('Isi identitas berikut sebelum mengerjakan soal.');
+      } catch (e) { gagal.push('header Bagian 1'); }
+    }
+
+    bio.fields.forEach(function (f) {
+      try {
+        var it = form.addTextItem();
+        it.setTitle(f.label);
+        if (f.helpText) {
+          try { it.setHelpText(f.helpText); } catch (e2) {}
+        }
+        /* Wajib diisi mengikuti pilihan guru; setRequired selalu ada pada
+           TextItem, tetapi tetap dijaga agar aman bila API berubah. */
+        if (bio.wajib) {
+          try { it.setRequired(true); } catch (e3) {}
+        }
+        jumlah++;
+      } catch (e4) { gagal.push(f.label); }
+    });
+
+    gagal.forEach(function (g) { if (dilewati) dilewati.push('biodata: ' + g); });
+    return { jumlah: jumlah, gagal: gagal };
+  }
+
   /* ====================== FOLDER DRIVE ================================== */
 
   /**
@@ -497,6 +623,11 @@ var FormBuilder = (function () {
       meta: o.meta || {}
     };
 
+    /* Biodata Bagian 1 dinormalkan lebih dulu supaya addItems_ dan laporan
+       hasil build memakai objek yang sama. */
+    var bio = _normBiodata_(o);
+    opts.biodata = bio;
+
     var title = String(o.title || '').trim() ||
       ('Latihan ' + (spec.mapel || '') + (spec.kelas ? ' - Kelas ' + spec.kelas : '') + ': ' + (spec.topik || '')).replace(/ - $/, '').trim();
 
@@ -557,8 +688,29 @@ var FormBuilder = (function () {
       _setOpt_(form, ['setLimitOneResponsePerUser'], true, 'batasi 1 respons per user', dilewati);
     }
 
-    // ---------- Section header (opsional, biar rapi) ----------
-    if (o.pakaiSection) {
+    // ---------- Bagian 1: BIODATA, lalu pemisah ke Bagian 2 ----------
+    /* PENTING soal urutan: di Google Forms, PageBreakItem MENGAKHIRI bagian
+       yang sedang berjalan — semua item yang ditambah SESUDAHNYA masuk ke
+       bagian berikutnya. Jadi biodata harus ditulis LEBIH DULU, baru pemisah,
+       baru soal.
+
+       Karena itu `pakaiSection` (page break di depan soal) hanya dipakai bila
+       biodata MATI. Bila keduanya jalan bersamaan, page break di depan akan
+       membuat Bagian 1 kosong dan menggeser biodata ke Bagian 2 — persis
+       kebalikan dari yang diminta. */
+    var hasilBio = { jumlah: 0, gagal: [] };
+    if (bio.aktif) {
+      hasilBio = addBiodata_(form, bio, dilewati);
+      try {
+        form.addPageBreakItem()
+          .setTitle(bio.judulBagian2 || 'Soal')
+          .setHelpText(desc.substring(0, 300));
+      } catch (ePB) {
+        /* Tanpa pemisah, soal akan menyatu ke Bagian 1. Form tetap berguna,
+           jadi catat dan lanjutkan. */
+        dilewati.push('pemisah Bagian 2 (soal menyatu dengan biodata)');
+      }
+    } else if (o.pakaiSection) {
       form.addPageBreakItem()
         .setTitle(title)
         .setHelpText(desc.substring(0, 300));
@@ -641,6 +793,18 @@ var FormBuilder = (function () {
       /* Berapa soal pilihan yang kuncinya benar-benar terpasang & terverifikasi
          di Form. Angka ini yang membuat "kunci jawaban kosong" tidak bisa lagi
          lolos tanpa terdeteksi. */
+      /* Bagian 1: identitas peserta. `jumlahSoal` dan `totalPoin` SENGAJA
+         tidak ikut menghitung biodata — biodata bukan soal dan tidak berpoin,
+         jadi total poin kuis tetap bersih. */
+      biodata: bio.aktif ? {
+        jumlah: hasilBio.jumlah,
+        kolom: bio.fields.map(function (f) { return f.label; }),
+        wajib: bio.wajib,
+        judulBagian1: bio.judulBagian1,
+        judulBagian2: bio.judulBagian2,
+        gagal: hasilBio.gagal
+      } : null,
+      jumlahBagian: (bio.aktif || o.pakaiSection) ? 2 : 1,
       soalBerkunci: questions.length - (hasilItem.tanpaKunci || 0),
       tanpaKunci: hasilItem.tanpaKunci || 0,
       kunci: key
@@ -655,6 +819,9 @@ var FormBuilder = (function () {
     _kunciIsian_: _kunciIsian_,
     _teksKunci_: _teksKunci_,
     _pasangChoices_: _pasangChoices_,
+    _normBiodata_: _normBiodata_,
+    addBiodata_: addBiodata_,
+    BIODATA_BAWAAN: BIODATA_BAWAAN,
     _setOpt_: _setOpt_,
     LABEL_TIPE: LABEL_TIPE
   };

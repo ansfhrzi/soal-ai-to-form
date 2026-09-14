@@ -386,6 +386,50 @@
               <label class="switch-row"><input type="checkbox" id="g-validasiIsian" checked><span>Pakai validasi kunci untuk isian singkat</span></label>
             </div>
 
+            <h3 class="sub-title">Bagian 1 · Biodata peserta</h3>
+            <div class="switch-grid">
+              <label class="switch-row">
+                <input type="checkbox" id="g-biodata" checked>
+                <span>Tambahkan kolom biodata di <b>Bagian 1</b>, soal otomatis pindah ke <b>Bagian 2</b></span>
+              </label>
+              <label class="switch-row">
+                <input type="checkbox" id="g-bio-wajib" checked>
+                <span>Biodata wajib diisi</span>
+              </label>
+            </div>
+
+            <div id="bioBox" style="margin-top:12px">
+              <div class="row-3">
+                <label class="field">
+                  <span>Nama</span>
+                  <input id="g-bio-nama" value="Nama Lengkap" placeholder="Nama Lengkap">
+                </label>
+                <label class="field">
+                  <span>Kelas</span>
+                  <input id="g-bio-kelas" value="Kelas" placeholder="Kelas">
+                </label>
+                <label class="field">
+                  <span>Nomor</span>
+                  <input id="g-bio-nomor" value="Nomor Absen" placeholder="Nomor Absen">
+                </label>
+              </div>
+              <div class="row-2">
+                <label class="field">
+                  <span>Judul Bagian 1</span>
+                  <input id="g-bio-judul1" value="Biodata Peserta" placeholder="Biodata Peserta">
+                </label>
+                <label class="field">
+                  <span>Judul Bagian 2 (soal)</span>
+                  <input id="g-bio-judul2" value="Bagian 2 · Soal" placeholder="Bagian 2 · Soal">
+                </label>
+              </div>
+              <small class="hint">
+                Label boleh diganti (mis. "Nomor Absen" → "No. Peserta"). <b>Kosongkan</b> salah satu
+                label untuk membuang kolom itu. Kolom biodata tidak diberi poin dan tidak dinilai —
+                total poin kuis tetap hanya dari soal.
+              </small>
+            </div>
+
             <div class="actions">
               <button class="btn primary big" id="btnBuild" type="button">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
