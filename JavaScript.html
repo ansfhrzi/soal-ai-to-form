@@ -650,7 +650,11 @@
       function (err) {
         $('btnBuild').disabled = false;
         hideOverlay();
-        showBuildErrorerrText(err);
+        /* Sebelumnya tertulis `showBuildErrorerrText(err)` — kurung buka hilang,
+           sehingga yang dipanggil adalah fungsi yang tidak pernah ada.
+           ReferenceError itu memutus handler SEBELUM toast di bawahnya, jadi
+           kegagalan build tidak pernah muncul di layar sama sekali. */
+        showBuildError(errText(err));
         toast('Error: ' + errText(err), 'err');
       });
   }
@@ -676,6 +680,13 @@
       '</div>' +
       '<div class="meta">' + esc(r.title || '') + ' · ' + r.jumlahSoal + ' soal · ' + r.totalPoin + ' poin' +
       (breakdown ? '<br>' + esc(breakdown) : '') +
+      /* Setelan yang dilewati tidak menggagalkan form, tetapi guru perlu tahu
+         apa yang harus diklik manual di editor Form. */
+      (r.dilewati && r.dilewati.length
+        ? '<br><b>Catatan:</b> setelan ini tidak bisa diterapkan otomatis, atur manual di ' +
+          'editor Form → ' + esc(r.dilewati.join(', ')) + '.'
+        : '') +
+      (r.peringatan ? '<br><b>Peringatan:</b> ' + esc(r.peringatan) : '') +
       (r.demo ? '<br><b>Deploy ke Apps Script agar form benar-benar dibuat.</b>' : '') +
       '</div>';
 
@@ -688,10 +699,30 @@
 
   function showBuildError(msg) {
     var box = $('resultBox');
+    var m = String(msg || '');
+    /* Tips harus SESUAI penyebabnya. Menyarankan "periksa kuota API / izin
+       Drive" untuk `TypeError: ... is not a function` menyesatkan - itu bug
+       kode (biasanya nama metode FormApp yang berubah), dan pengguna akan
+       menghabiskan waktu memeriksa kuota yang sebenarnya tidak bermasalah. */
+    var tips;
+    if (/is not a function|is not defined|Cannot read propert|TypeError|ReferenceError/i.test(m)) {
+      tips = 'ini kesalahan KODE di Apps Script (metode/objek tidak dikenal) - bukan kuota API '
+        + 'dan bukan izin Drive. Perbarui file FormBuilder.gs dari repositori, lalu Deploy > '
+        + 'Manage deployments > Version: New version. Soal Anda tetap aman di tab Pratinjau.';
+    } else if (/quota|rate.?limit|RESOURCE_EXHAUSTED|429|kuota/i.test(m)) {
+      tips = 'kuota AI sedang habis. Tunggu beberapa menit, klik "Reset Cooldown" di tab '
+        + 'Pengaturan, atau pasang API key tambahan. Soal Anda tetap aman di tab Pratinjau.';
+    } else if (/permission|forbidden|izin|Folder Drive tidak ditemukan|403/i.test(m)) {
+      tips = 'periksa izin Drive - folder tujuan harus bisa ditulisi oleh akun yang men-deploy, '
+        + 'dan scope Drive/Forms sudah diotorisasi (jalankan fungsi onSetup sekali dari editor). '
+        + 'Soal Anda tetap aman di tab Pratinjau.';
+    } else {
+      tips = 'periksa kuota API, izin Drive (folder harus bisa ditulisi), dan coba lagi. '
+        + 'Soal Anda tetap aman di tab Pratinjau.';
+    }
     box.className = 'result error';
-    box.innerHTML = '<h4>❌ Gagal membuat form</h4><div class="meta">' + esc(msg) + '</div>' +
-      '<div class="meta">Tips: periksa kuota API, izin Drive (folder harus bisa ditulisi), dan coba lagi. ' +
-      'Soal Anda tetap aman di tab Pratinjau.</div>';
+    box.innerHTML = '<h4>⛔ Gagal membuat form</h4><div class="meta">' + esc(m) + '</div>'
+      + '<div class="meta">Tips: ' + esc(tips) + '</div>';
     box.hidden = false;
   }
 

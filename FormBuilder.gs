@@ -66,6 +66,57 @@ var FormBuilder = (function () {
 
   function huruf_(i) { return String.fromCharCode(65 + i); }
 
+  /** Mengubah apa pun yang dilempar menjadi string terbaca (aman utk non-Error). */
+  function _pesan_(e) {
+    if (e === null || typeof e === 'undefined') return 'kesalahan tanpa pesan';
+    if (typeof e === 'string') return e;
+    if (e.message) return String(e.message);
+    try { var j = JSON.stringify(e); return (j && j !== '{}') ? j : String(e); }
+    catch (e2) { return String(e); }
+  }
+
+  /* ====================== SETELAN FORM YANG AMAN ======================== */
+
+  /**
+   * Menerapkan satu setelan Form secara defensif.
+   *
+   * MENGAPA PERLU: FormApp memakai nama metode yang tidak selalu mudah
+   * ditebak, dan beberapa sudah di-deprecate. Nama yang benar hari ini:
+   *   • acak urutan soal  → setShuffleQuestions()      (BUKAN setShuffleQuestionOrder)
+   *   • bilah progres     → setProgressBar()           (BUKAN setShowProgressIndicator)
+   *   • wajib login       → setRequireLogin()          (sudah DEPRECATED oleh Google)
+   *   • Form TIDAK punya saveAndClose() — itu milik DocumentApp.Document;
+   *     perubahan Form disimpan otomatis.
+   *
+   * Memanggil nama yang tidak ada melempar `TypeError: … is not a function`
+   * yang MEMBATALKAN seluruh pembuatan form — padahal soal-soalnya sudah
+   * selesai ditulis ke Form. Setelan kosmetik tidak boleh menggagalkan hasil
+   * utama, jadi kegagalan dicatat ke `dilewati` dan build terus berjalan.
+   *
+   * @param {Form}   form      Form tujuan.
+   * @param {Array}  kandidat  Daftar nama metode, dicoba berurutan.
+   * @param {*}      nilai     Argumen yang diteruskan.
+   * @param {String} label     Nama setelan untuk laporan ke pengguna.
+   * @param {Array}  dilewati  Larik penampung setelan yang gagal diterapkan.
+   * @return {Boolean} true bila salah satu kandidat berhasil dipanggil.
+   */
+  function _setOpt_(form, kandidat, nilai, label, dilewati) {
+    for (var i = 0; i < kandidat.length; i++) {
+      var nama = kandidat[i];
+      /* Pemeriksaan `typeof form[nama]` HARUS ikut di dalam try. Pada sebagian
+         objek native/Proxy, MEMBACA properti yang tidak dikenal sudah melempar
+         TypeError — di luar try, pemeriksaan yang dimaksudkan sebagai pengaman
+         itu justru menjadi sumber kegagalan. */
+      try {
+        if (!form || typeof form[nama] !== 'function') continue;
+        form[nama](nilai);
+        return true;
+      } catch (e) { /* metode tidak ada / ditolak → coba kandidat berikutnya */ }
+    }
+    if (dilewati && label) dilewati.push(label);
+    return false;
+  }
+
   /**
    * Menormalkan satu soal dari payload client supaya tahan terhadap
    * perubahan bentuk data dari UI.
@@ -342,19 +393,28 @@ var FormBuilder = (function () {
     form.setDescription(desc);
 
     // ---------- Pengaturan dasar ----------
+    /* Semua setelan lewat _setOpt_: nama metode yang salah/tidak tersedia
+       TIDAK lagi menggagalkan pembuatan form (lihat catatan di _setOpt_). */
+    var dilewati = [];
+
     if (opts.isQuiz) {
-      form.setIsQuiz(true);
-      try {
-        form.setShowLinkToRespondAgain(false);
-      } catch (e) {}
+      /* setIsQuiz harus jalan SEBELUM item ditambah: tanpa mode Kuis,
+         item.setPoints() dan umpan balik tidak berlaku. */
+      _setOpt_(form, ['setIsQuiz'], true, 'mode Kuis', dilewati);
+      _setOpt_(form, ['setShowLinkToRespondAgain'], false, 'sembunyikan link "Isi lagi"', dilewati);
     }
-    form.setShuffleQuestionOrder(opts.acakSoal);
-    form.setRequireLogin(opts.requireLogin);
-    form.setAllowResponseEdits(false);
-    form.setShowProgressIndicator(opts.showProgressBar);
-    try { form.setCollectEmail(opts.collectEmail); } catch (e) {}
+    _setOpt_(form, ['setShuffleQuestions', 'setShuffleQuestionOrder'],
+      opts.acakSoal, 'acak urutan soal', dilewati);
+    _setOpt_(form, ['setRequireLogin'],
+      opts.requireLogin, 'wajib login', dilewati);
+    _setOpt_(form, ['setAllowResponseEdits'],
+      false, 'larang edit respons', dilewati);
+    _setOpt_(form, ['setProgressBar', 'setShowProgressIndicator'],
+      opts.showProgressBar, 'bilah progres', dilewati);
+    _setOpt_(form, ['setCollectEmail'],
+      opts.collectEmail, 'kumpulkan email', dilewati);
     if (opts.limitOne) {
-      try { form.setLimitOneResponsePerUser(true); } catch (e) {}
+      _setOpt_(form, ['setLimitOneResponsePerUser'], true, 'batasi 1 respons per user', dilewati);
     }
 
     // ---------- Section header (opsional, biar rapi) ----------
@@ -365,19 +425,40 @@ var FormBuilder = (function () {
     }
 
     // ---------- Tambahkan soal ----------
-    addItems_(form, questions, opts);
+    /* Soal ditulis ke Form. Bila salah satu item gagal, Form-nya SUDAH ada di
+       Drive — jangan biarkan guru kehilangan jejaknya, sertakan link edit pada
+       pesan error supaya bisa diperiksa/dilanjutkan manual. */
+    try {
+      addItems_(form, questions, opts);
+    } catch (eItem) {
+      var linkForm = '';
+      try { linkForm = form.getEditUrl(); } catch (e2) {}
+      throw new Error('Gagal menuliskan soal ke Form: ' + _pesan_(eItem) +
+        (linkForm ? (' — Form sudah terbentuk, periksa/lanjutkan di: ' + linkForm) : ''));
+    }
 
-    form.saveAndClose();
+    /* CATATAN: FormApp.Form TIDAK punya saveAndClose() — itu metode
+       DocumentApp.Document. Perubahan pada Form disimpan otomatis, jadi
+       memanggilnya hanya menghasilkan "form.saveAndClose is not a function"
+       SETELAH semua soal selesai ditulis. */
 
     // ---------- Kunci jawaban ----------
-    var key = null;
+    /* Spreadsheet kunci adalah artefak TAMBAHAN. Kalau pembuatannya gagal,
+       Form-nya tetap sah dan lengkap — melaporkan seluruh build sebagai gagal
+       akan menyembunyikan link ke form yang sebenarnya sudah jadi. */
+    var key = null, peringatanBuild = '';
     if (opts.buatKunci) {
-      key = createKeySpreadsheet_(folder, title, questions, {
-        spec: spec,
-        meta: opts.meta,
-        formEditUrl: form.getEditUrl(),
-        formPublishUrl: form.getPublishedUrl()
-      });
+      try {
+        key = createKeySpreadsheet_(folder, title, questions, {
+          spec: spec,
+          meta: opts.meta,
+          formEditUrl: form.getEditUrl(),
+          formPublishUrl: form.getPublishedUrl()
+        });
+      } catch (eKey) {
+        peringatanBuild = 'Form berhasil dibuat, tetapi spreadsheet kunci jawaban gagal: ' +
+          _pesan_(eKey);
+      }
     }
 
     var breakdown = {};
@@ -396,6 +477,11 @@ var FormBuilder = (function () {
       jumlahSoal: questions.length,
       totalPoin: questions.reduce(function (a, q) { return a + q.points; }, 0),
       breakdown: breakdown,
+      /* Setelan yang tidak bisa diterapkan (mis. metode FormApp sudah diganti
+         namanya). Form tetap jadi — pengguna hanya perlu tahu setelan mana
+         yang harus diklik manual di editor Form. */
+      dilewati: dilewati,
+      peringatan: peringatanBuild,
       kunci: key
     };
   }
@@ -405,6 +491,7 @@ var FormBuilder = (function () {
     resolveFolder_: resolveFolder_,
     extractId_: extractId_,
     normQuestion_: normQuestion_,
+    _setOpt_: _setOpt_,
     LABEL_TIPE: LABEL_TIPE
   };
 })();

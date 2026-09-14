@@ -338,11 +338,20 @@ function buildFormFromQuestions(payload) {
     var questions = payload.questions || [];
     if (!questions.length) throw new Error('Daftar soal kosong. Generate soal terlebih dahulu.');
     var result = FormBuilder.build(payload);
-    log_('buildForm', { jumlah: result.jumlahSoal, formId: result.formId });
+    log_('buildForm', {
+      jumlah: result.jumlahSoal,
+      formId: result.formId,
+      dilewati: (result.dilewati || []).join(', '),
+      peringatan: result.peringatan || ''
+    });
     return { ok: true, result: result };
   } catch (err) {
-    log_('buildForm:ERROR', { message: err.message });
-    return { ok: false, error: err.message };
+    /* `err.message` bisa undefined bila yang dilempar bukan objek Error, dan
+       sisi client lalu mencetak "[object Object]" / pesan kosong. errMsg_()
+       selalu menghasilkan string terbaca. */
+    var pesan = errMsg_(err);
+    log_('buildForm:ERROR', { message: pesan });
+    return { ok: false, error: pesan, kode: err && err.kode ? err.kode : '' };
   }
 }
 
