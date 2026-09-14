@@ -1,0 +1,1091 @@
+/* ============================================================================
+   JavaScript.html — seluruh logika sisi client
+   ----------------------------------------------------------------------------
+   • Berkomunikasi dengan Apps Script lewat google.script.run
+   • Bila dibuka di luar Apps Script (mis. pratinjau file) otomatis masuk
+     MODE DEMO dengan data contoh, supaya UI tetap bisa dilihat & dicoba
+   ============================================================================ */
+<script>
+(function () {
+  'use strict';
+
+  /* ========================== 0. KONEKSI GAS ========================== */
+  var GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? google.script.run : null;
+
+  function srv(fn) {
+    return {
+      run: function () {
+        var args = Array.prototype.slice.call(arguments);
+        var onOk = args.pop(), onErr = args.pop();
+        if (!GAS) { if (typeof onErr === 'function') onErr(new Error('DEMO')); return; }
+        GAS.withSuccessHandler(onOk).withFailureHandler(onErr)[fn].apply(null, args);
+      }
+    };
+  }
+
+  /* ========================== 1. STATE ========================== */
+  var TIPE_LABEL = {
+    pg: 'Pilihan Ganda',
+    pg_kompleks: 'PG Kompleks',
+    dropdown: 'Dropdown',
+    isian: 'Isian Singkat',
+    essay: 'Essay'
+  };
+  var TIPE_NEED_OPTIONS = { pg: 1, pg_kompleks: 1, dropdown: 1 };
+  var DEMO_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
+    'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+
+  var state = {
+    demo: !GAS,
+    questions: [],
+    meta: {},
+    config: { provider: 'gemini', model: '', modelRotasi: [], hasKey: false, keys: [], jmlKey: 0 },
+    panel: 1
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  function q(sel, root) { return (root || document).querySelector(sel); }
+  function qa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function huruf(i) { return String.fromCharCode(65 + i); }
+
+  /**
+   * Objek error dari Apps Script tiba sebagai object biasa, bukan Error —
+   * memanggil `.message` padanya menghasilkan `undefined` dan tercetak
+   * "[object Object]" di layar. Fungsi ini selalu mengembalikan string terbaca.
+   */
+  function errText(x) {
+    if (x === null || typeof x === 'undefined') return 'tidak ada pesan error';
+    if (typeof x === 'string') return x;
+    var m = x.message || x.error || x.msg || x.details || x.errorMessage;
+    if (m && typeof m === 'object') m = m.message || JSON.stringify(m);
+    if (m) return (x.kode ? '[' + x.kode + '] ' : '') + String(m);
+    try {
+      var j = JSON.stringify(x);
+      if (j && j !== '{}' && j !== 'null') return j;
+    } catch (e) { /* abaikan */ }
+    return String(x);
+  }
+
+  /* ========================== 2. TOAST & OVERLAY ========================== */
+  function toast(msg, kind) {
+    var box = $('toasts');
+    var el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(function () {
+      el.style.transition = 'opacity .3s, transform .3s';
+      el.style.opacity = '0'; el.style.transform = 'translateX(14px)';
+      setTimeout(function () { el.remove(); }, 320);
+    }, 4200);
+  }
+
+  var progTimer = null;
+  function showOverlay(title, text) {
+    $('overlayTitle').textContent = title || 'Sedang memproses…';
+    $('overlayText').textContent = text || '';
+    $('overlay').hidden = false;
+    var bar = $('progressBar');
+    bar.style.width = '8%';
+    var p = 8;
+    clearInterval(progTimer);
+    progTimer = setInterval(function () {
+      p = Math.min(94, p + (p < 60 ? 3.2 : 0.7));
+      bar.style.width = p + '%';
+    }, 420);
+  }
+  function updateOverlay(text) { $('overlayText').textContent = text; }
+  function hideOverlay() {
+    clearInterval(progTimer);
+    $('progressBar').style.width = '100%';
+    setTimeout(function () { $('overlay').hidden = true; $('progressBar').style.width = '0%'; }, 260);
+  }
+
+  /* ========================== 3. NAVIGASI PANEL ========================== */
+  function goto(n) {
+    n = Number(n);
+    state.panel = n;
+    qa('.panel').forEach(function (p) { p.classList.remove('is-active'); });
+    var target = $('panel-' + n);
+    if (target) target.classList.add('is-active');
+    qa('.step').forEach(function (s) {
+      var sn = Number(s.getAttribute('data-goto'));
+      s.classList.toggle('is-active', sn === n);
+      s.classList.toggle('is-done', sn < n);
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* ========================== 4. SPESIFIKASI ========================== */
+  function chipsValues(containerId) {
+    return qa('#' + containerId + ' input[type=checkbox]').filter(function (c) { return c.checked; })
+      .map(function (c) { return c.value; });
+  }
+  function setChips(containerId, values) {
+    qa('#' + containerId + ' input[type=checkbox]').forEach(function (c) {
+      c.checked = values.indexOf(c.value) !== -1;
+    });
+  }
+
+  function collectSpec() {
+    return {
+      mapel: $('f-mapel').value.trim(),
+      kelas: $('f-kelas').value.trim(),
+      kurikulum: $('f-kurikulum').value,
+      topik: $('f-topik').value.trim(),
+      cpTp: $('f-cpTp').value.trim(),
+      indikator: $('f-indikator').value.trim(),
+      jumlah: Math.max(1, Math.min(50, Number($('f-jumlah').value) || 10)),
+      poin: Math.max(1, Number($('f-poin').value) || 1),
+      tipe: chipsValues('chips-tipe'),
+      level: chipsValues('chips-level'),
+      kesulitan: $('f-kesulitan').value,
+      preset: $('f-preset').value,
+      bahasa: $('f-bahasa').value,
+      materi: $('f-materi').value.trim(),
+      instruksi: $('f-instruksi').value.trim(),
+      pembahasan: $('f-pembahasan').checked,
+      temperature: Number($('f-temp').value),
+      format: $('f-format').value,
+      thinking: $('f-thinking') ? $('f-thinking').value : 'off'
+    };
+  }
+
+  function validateSpec(s) {
+    if (!s.topik && !s.materi) { toast('Topik / materi wajib diisi.', 'err'); $('f-topik').focus(); return false; }
+    if (!s.tipe.length) { toast('Pilih minimal satu tipe soal.', 'err'); return false; }
+    if (!s.level.length) { toast('Pilih minimal satu level kognitif.', 'err'); return false; }
+    if (s.jumlah > 30) toast('Jumlah soal ' + s.jumlah + ' — proses bisa lama. Pertimbangkan dibagi 2×.', 'warn');
+    return true;
+  }
+
+  function updateEstimate() {
+    var n = Number($('f-jumlah').value) || 10;
+    var tipe = chipsValues('chips-tipe');
+    var tokens = 2048 + n * 900;
+    var detik = Math.round(6 + n * (tipe.length > 2 ? 1.6 : 1.1));
+    $('estimate').textContent = n + ' soal ≈ ' + detik + '–' + (detik + 12) + ' detik · ±' +
+      tokens.toLocaleString('id-ID') + ' token output · ' + (tipe.length ? tipe.join(', ') : '-');
+  }
+
+  /* ========================== 5. GENERATE ========================== */
+  function generate(retryCount) {
+    var spec = collectSpec();
+    if (!validateSpec(spec)) return;
+    retryCount = retryCount || 0;
+
+    if (state.demo) {
+      showOverlay('Mode demo — membuat contoh soal…', 'Tidak ada koneksi ke AI di pratinjau ini.');
+      setTimeout(function () {
+        state.questions = demoQuestions(spec);
+        state.meta = { model: 'demo-model', provider: 'demo', elapsedMs: 1200, judul: '', deskripsi: '' };
+        hideOverlay();
+        afterGenerate(spec);
+      }, 900);
+      return;
+    }
+
+    if (!state.config.hasKey) {
+      toast('API key belum disimpan. Buka tab Pengaturan dulu.', 'err');
+      goto(3);
+      return;
+    }
+
+    showOverlay('Membuat soal dengan AI…',
+      'Model ' + state.config.model + ' sedang menyusun ' + spec.jumlah + ' soal. Mohon tunggu.');
+    $('btnGenerate').disabled = true;
+
+    srv('generateQuestions').run(spec,
+      function (res) {
+        $('btnGenerate').disabled = false;
+        hideOverlay();
+        if (!res || !res.ok) {
+          var msg = (res && errText(res)) || 'Gagal tanpa pesan error.';
+          if (retryCount < 1 && /JSON|MAX_TOKENS|SAFETY/i.test(msg)) {
+            toast('Percobaan pertama gagal, mengulang otomatis…', 'warn');
+            return generate(retryCount + 1);
+          }
+          showResult($('testResult'), false, msg);
+          toast('Gagal: ' + msg, 'err');
+          return;
+        }
+        state.questions = res.questions || [];
+        state.meta = res.meta || {};
+        afterGenerate(spec);
+      },
+      function (err) {
+        $('btnGenerate').disabled = false;
+        hideOverlay();
+        toast('Error: ' + errText(err), 'err');
+      });
+  }
+
+  function afterGenerate(spec) {
+    if (!state.questions.length) { toast('AI tidak mengembalikan soal apa pun.', 'err'); return; }
+    if (!$('g-title').value.trim()) {
+      $('g-title').value = state.meta.judul || autoTitle(spec);
+    }
+    if (!$('g-desc').value.trim() && state.meta.deskripsi) $('g-desc').value = state.meta.deskripsi;
+    renderQuestions();
+    toast(state.questions.length + ' soal berhasil dibuat · ' + (state.meta.model || '-') +
+      ' · ' + (state.meta.key || '') + ' · ' + ((state.meta.elapsedMs || 0) / 1000).toFixed(1) + ' s' +
+      (state.meta.polos ? ' · mode JSON polos' : ''), 'ok');
+    goto(2);
+  }
+
+  function autoTitle(spec) {
+    return ['Latihan', spec.mapel, spec.kelas ? 'Kelas ' + spec.kelas : '', spec.topik]
+      .filter(Boolean).join(' · ');
+  }
+
+  /* ========================== 6. RENDER SOAL ========================== */
+  function renderSummary() {
+    var counts = {}, totalPoin = 0;
+    state.questions.forEach(function (q) {
+      counts[q.type] = (counts[q.type] || 0) + 1;
+      totalPoin += Number(q.points || 0);
+    });
+    var pills = Object.keys(counts).map(function (t) {
+      return '<span class="pill">' + esc(TIPE_LABEL[t] || t) + ': <b>' + counts[t] + '</b></span>';
+    });
+    pills.push('<span class="pill">Total poin: <b>' + totalPoin + '</b></span>');
+    if (state.meta.model) pills.push('<span class="pill">Model: <b>' + esc(state.meta.model) + '</b></span>');
+    if (state.meta.key) pills.push('<span class="pill">Dipakai: <b>' + esc(state.meta.key) + '</b></span>');
+    if (state.meta.percobaan) pills.push('<span class="pill">Percobaan: <b>' + state.meta.percobaan + '×</b></span>');
+    $('summary').innerHTML = pills.join('');
+    $('summary').hidden = false;
+    $('badgeCount').textContent = state.questions.length;
+    $('previewActions').hidden = state.questions.length === 0;
+    $('emptyState').hidden = state.questions.length > 0;
+  }
+
+  function optionRowHtml(q, i, oi) {
+    var isCorrect = (q.correctIdx || []).indexOf(oi) !== -1;
+    var multi = q.type === 'pg_kompleks';
+    return '' +
+      '<div class="opt-row' + (isCorrect ? ' is-correct' : '') + '" data-oi="' + oi + '">' +
+      '<span class="opt-letter">' + huruf(oi) + '</span>' +
+      '<input type="text" class="opt-input" data-i="' + i + '" data-oi="' + oi + '" value="' + esc(q.options[oi]) + '" placeholder="Teks pilihan ' + huruf(oi) + '">' +
+      '<label class="opt-mark" title="Tandai sebagai jawaban benar">' +
+      '<input type="' + (multi ? 'checkbox' : 'radio') + '" class="opt-correct" name="correct-' + i + '" data-i="' + i + '" data-oi="' + oi + '"' + (isCorrect ? ' checked' : '') + '>' +
+      '<span>benar</span></label>' +
+      '<button type="button" class="opt-del" data-delopt="' + i + ':' + oi + '" title="Hapus opsi">✕</button>' +
+      '</div>';
+  }
+
+  function questionCardHtml(q, i) {
+    var multi = q.type === 'pg_kompleks';
+    var needOpts = !!TIPE_NEED_OPTIONS[q.type];
+    var options = q.options || [];
+    var optsHtml = needOpts
+      ? options.map(function (_, oi) { return optionRowHtml(q, i, oi); }).join('') +
+        '<button type="button" class="btn small ghost" data-addopt="' + i + '">+ Tambah opsi</button>'
+      : '<div class="opt-row"><input type="text" class="answer-text" data-i="' + i + '" value="' +
+        esc(q.answerText || (options.length ? options[0] : '')) + '" placeholder="Kunci jawaban / poin kunci (untuk isian &amp; essay)"></div>';
+
+    var invalid = needOpts && !(q.correctIdx && q.correctIdx.length);
+
+    return '' +
+      '<article class="q-card' + (invalid ? ' is-invalid' : '') + '" data-i="' + i + '">' +
+      '<div class="q-head">' +
+      '<span class="q-num">' + (i + 1) + '</span>' +
+      '<select class="q-type" data-i="' + i + '" style="width:auto;padding:5px 28px 5px 9px;font-size:12.5px">' +
+      Object.keys(TIPE_LABEL).map(function (t) {
+        return '<option value="' + t + '"' + (q.type === t ? ' selected' : '') + '>' + TIPE_LABEL[t] + '</option>';
+      }).join('') +
+      '</select>' +
+      (q.level ? '<span class="q-level">' + esc(q.level) + '</span>' : '') +
+      (q.warning ? '<span class="q-level" style="color:var(--warn)">' + esc(q.warning) + '</span>' : '') +
+      '<span class="q-points">poin <input type="number" class="q-points-input" data-i="' + i + '" min="0" step="1" value="' + esc(q.points) + '"></span>' +
+      '<span class="q-tools">' +
+      '<button type="button" class="btn small ghost" data-regen="' + i + '" title="Ganti soal ini saja">↻</button>' +
+      '<button type="button" class="btn small ghost" data-dup="' + i + '" title="Duplikat">⧉</button>' +
+      '<button type="button" class="btn small danger ghost" data-del="' + i + '" title="Hapus soal">🗑</button>' +
+      '</span>' +
+      '</div>' +
+      '<div class="q-body">' +
+      '<textarea class="q-text" data-i="' + i + '" placeholder="Tulis soal…">' + esc(q.text) + '</textarea>' +
+      '<div class="opts" style="margin-top:10px">' + optsHtml + '</div>' +
+      '<div class="q-extra">' +
+      '<label><span>Pembahasan / umpan balik</span>' +
+      '<textarea class="q-expl" data-i="' + i + '" placeholder="Penjelasan mengapa jawaban benar…">' + esc(q.explanation || '') + '</textarea></label>' +
+      '<label><span>Level kognitif</span>' +
+      '<input type="text" class="q-level-input" data-i="' + i + '" value="' + esc(q.level || '') + '" placeholder="C4"></label>' +
+      '</div>' +
+      (invalid ? '<div class="q-warn">⚠ Belum ada jawaban benar yang ditandai.</div>' : '') +
+      '</div>' +
+      '</article>';
+  }
+
+  function renderQuestions() {
+    $('qList').innerHTML = state.questions.map(questionCardHtml).join('');
+    renderSummary();
+    syncJson();
+  }
+
+  function findQ(i) { return state.questions[Number(i)]; }
+
+  /* --- delegasi event pada daftar soal --- */
+  function bindList() {
+    var list = $('qList');
+
+    list.addEventListener('input', function (e) {
+      var t = e.target, i = t.getAttribute('data-i');
+      if (i === null) return;
+      var qq = findQ(i); if (!qq) return;
+      if (t.classList.contains('q-text')) qq.text = t.value;
+      else if (t.classList.contains('opt-input')) qq.options[Number(t.getAttribute('data-oi'))] = t.value;
+      else if (t.classList.contains('q-expl')) qq.explanation = t.value;
+      else if (t.classList.contains('q-level-input')) qq.level = t.value;
+      else if (t.classList.contains('q-points-input')) qq.points = Number(t.value) || 0;
+      else if (t.classList.contains('answer-text')) qq.answerText = t.value;
+      syncJson();
+    });
+
+    list.addEventListener('change', function (e) {
+      var t = e.target, i = t.getAttribute('data-i');
+      if (i === null) return;
+      var qq = findQ(i); if (!qq) return;
+
+      if (t.classList.contains('opt-correct')) {
+        var oi = Number(t.getAttribute('data-oi'));
+        if (t.type === 'radio') qq.correctIdx = [oi];
+        else {
+          var arr = qq.correctIdx || [];
+          var pos = arr.indexOf(oi);
+          if (t.checked && pos === -1) arr.push(oi);
+          if (!t.checked && pos !== -1) arr.splice(pos, 1);
+          qq.correctIdx = arr;
+        }
+        renderQuestions();
+        return;
+      }
+      if (t.classList.contains('q-type')) {
+        qq.type = t.value;
+        if (!TIPE_NEED_OPTIONS[qq.type]) {
+          qq.answerText = qq.answerText || (qq.options[qq.correctIdx && qq.correctIdx[0]] || qq.options[0] || '');
+        } else if (!qq.options.length) {
+          qq.options = ['', '', '', ''];
+          qq.correctIdx = [0];
+        }
+        if (qq.type !== 'pg_kompleks' && (qq.correctIdx || []).length > 1) qq.correctIdx = qq.correctIdx.slice(0, 1);
+        renderQuestions();
+      }
+    });
+
+    list.addEventListener('click', function (e) {
+      var t = e.target.closest('button'); if (!t) return;
+      var i, oi;
+
+      if (t.hasAttribute('data-addopt')) {
+        i = Number(t.getAttribute('data-addopt'));
+        findQ(i).options.push('');
+        renderQuestions();
+      } else if (t.hasAttribute('data-delopt')) {
+        var parts = t.getAttribute('data-delopt').split(':');
+        i = Number(parts[0]); oi = Number(parts[1]);
+        var qq = findQ(i);
+        if (qq.options.length <= 2) { toast('Minimal 2 opsi.', 'warn'); return; }
+        qq.options.splice(oi, 1);
+        qq.correctIdx = (qq.correctIdx || []).filter(function (x) { return x !== oi; })
+          .map(function (x) { return x > oi ? x - 1 : x; });
+        renderQuestions();
+      } else if (t.hasAttribute('data-del')) {
+        i = Number(t.getAttribute('data-del'));
+        if (!confirm('Hapus soal nomor ' + (i + 1) + '?')) return;
+        state.questions.splice(i, 1);
+        renderQuestions();
+        toast('Soal dihapus.', 'ok');
+      } else if (t.hasAttribute('data-dup')) {
+        i = Number(t.getAttribute('data-dup'));
+        var copy = JSON.parse(JSON.stringify(findQ(i)));
+        state.questions.splice(i + 1, 0, copy);
+        renderQuestions();
+        toast('Soal diduplikasi.', 'ok');
+      } else if (t.hasAttribute('data-regen')) {
+        regenOne(Number(t.getAttribute('data-regen')), t);
+      }
+    });
+  }
+
+  /* ========================== 7. REGENERATE 1 SOAL ========================== */
+  function regenOne(i, btn) {
+    var spec = collectSpec();
+    if (!spec.topik && !spec.materi) { toast('Topik belum diisi.', 'err'); goto(1); return; }
+
+    if (state.demo) {
+      var dq = demoQuestions(spec)[i % 6];
+      dq.text = '[Demo, dibuat ulang] ' + dq.text;
+      state.questions[i] = dq;
+      renderQuestions();
+      toast('Soal ' + (i + 1) + ' diganti (demo).', 'ok');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    toast('Membuat ulang soal ' + (i + 1) + '…');
+    srv('regenerateOneQuestion').run(spec, i, state.questions,
+      function (res) {
+        if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+        if (!res || !res.ok) { toast('Gagal: ' + errText(res || '-'), 'err'); return; }
+        state.questions[i] = res.question;
+        renderQuestions();
+        toast('Soal ' + (i + 1) + ' berhasil diganti.', 'ok');
+      },
+      function (err) {
+        if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+        toast('Error: ' + errText(err), 'err');
+      });
+  }
+
+  /* ========================== 8. JSON VIEW / IMPOR ========================== */
+  function syncJson() {
+    var area = $('jsonArea');
+    if (!area) return;
+    if (!$('jsonBox').hidden) {
+      area.value = JSON.stringify({ soal: state.questions }, null, 2);
+    }
+  }
+
+  function showJson(show) {
+    $('jsonBox').hidden = !show;
+    if (show) {
+      $('jsonArea').value = JSON.stringify({ soal: state.questions }, null, 2);
+      $('jsonArea').focus();
+    }
+    $('btnJsonView').textContent = show ? 'Tutup JSON' : '{ } Lihat JSON';
+  }
+
+  function applyJson() {
+    var raw = $('jsonArea').value.trim();
+    if (!raw) { toast('JSON kosong.', 'err'); return; }
+    try {
+      var data = JSON.parse(raw);
+      var arr = Array.isArray(data) ? data : (data.soal || data.questions || data.items || []);
+      if (!arr.length) throw new Error('Tidak ada properti "soal" berisi array.');
+      state.questions = arr.map(function (q, i) { return normalizeQ(q, i); });
+      renderQuestions();
+      toast(state.questions.length + ' soal dimuat dari JSON.', 'ok');
+    } catch (err) {
+      toast('JSON tidak valid: ' + err.message, 'err');
+    }
+  }
+
+  function normalizeQ(q, i) {
+    q = q || {};
+    var type = String(q.type || q.tipe || 'pg').toLowerCase();
+    if (!TIPE_LABEL[type]) type = 'pg';
+    var options = (q.options || q.opsi || []).map(function (o) { return String(o == null ? '' : o); });
+    var correct = (q.correctIdx || q.benar || q.correct || []);
+    if (!Array.isArray(correct)) correct = [correct];
+    correct = correct.map(function (c) {
+      return typeof c === 'number' ? c : parseInt(String(c).trim(), 10);
+    }).filter(function (c) { return !isNaN(c) && c >= 0 && c < options.length; });
+    if (!correct.length && options.length) correct = [0];
+
+    return {
+      type: type,
+      text: String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))),
+      options: options,
+      correctIdx: correct,
+      answerText: String(q.answerText ||
+        ((type === 'isian' || type === 'essay')
+          ? (function () {
+              var raw = q.benar || q.correct || q.kunci || q.jawaban || '';
+              if (Array.isArray(raw)) raw = raw.join(' ');
+              return String(raw).trim() || (correct.length ? options[correct[0]] : '');
+            })()
+          : '') || ''),
+      points: Number(q.points || q.poin || 1) || 1,
+      level: String(q.level || ''),
+      explanation: String(q.explanation || q.pembahasan || ''),
+      warning: q.warning || ''
+    };
+  }
+
+  function downloadJson() {
+    try {
+      var blob = new Blob([JSON.stringify({ soal: state.questions }, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'bank-soal-ai.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      toast('File JSON diunduh.', 'ok');
+    } catch (e) {
+      toast('Unduhan diblokir di pratinjau. Salin JSON-nya saja.', 'warn');
+    }
+  }
+
+  function copyJson() {
+    var txt = $('jsonArea').value || JSON.stringify({ soal: state.questions }, null, 2);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () { toast('JSON disalin.', 'ok'); },
+        function () { toast('Gagal menyalin (izin ditolak).', 'warn'); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = txt; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast('JSON disalin.', 'ok'); }
+      catch (e) { toast('Browser tidak mengizinkan menyalin di pratinjau.', 'warn'); }
+      ta.remove();
+    }
+  }
+
+  function addManual() {
+    state.questions.push({
+      type: 'pg', text: '', options: ['', '', '', ''], correctIdx: [0],
+      points: Number($('f-poin').value) || 1, level: '', explanation: '', answerText: ''
+    });
+    renderQuestions();
+    var cards = qa('.q-card');
+    if (cards.length) {
+      cards[cards.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var ta = q('.q-text', cards[cards.length - 1]); if (ta) ta.focus();
+    }
+  }
+
+  /* ========================== 9. BUILD FORM ========================== */
+  function collectFormOptions() {
+    var spec = collectSpec();
+    return {
+      spec: spec,
+      questions: state.questions.map(function (q) {
+        // kunci teks untuk isian/essay ikut dikirim
+        if (!TIPE_NEED_OPTIONS[q.type] && q.answerText && (!q.options || !q.options.length)) {
+          q.options = [q.answerText];
+          q.correctIdx = [0];
+        }
+        return q;
+      }),
+      form: {
+        title: $('g-title').value.trim(),
+        description: $('g-desc').value.trim(),
+        folderId: $('g-folder').value.trim(),
+        targetFormId: $('g-target').value.trim(),
+        isQuiz: $('g-isQuiz').checked,
+        buatKunci: $('g-buatKunci').checked,
+        acakSoal: $('g-acakSoal').checked,
+        acakOpsi: $('g-acakOpsi').checked,
+        wajibSemua: $('g-wajibSemua').checked,
+        nomorOtomatis: $('g-nomorOtomatis').checked,
+        tampilkanLevel: $('g-tampilkanLevel').checked,
+        requireLogin: $('g-requireLogin').checked,
+        limitOne: $('g-limitOne').checked,
+        collectEmail: $('g-collectEmail').checked,
+        showProgressBar: $('g-progress').checked,
+        pakaiValidasiIsian: $('g-validasiIsian').checked,
+        meta: state.meta
+      }
+    };
+  }
+
+  function buildForm() {
+    if (!state.questions.length) { toast('Belum ada soal untuk dibuat.', 'err'); goto(1); return; }
+    var payload = collectFormOptions();
+
+    var bad = payload.questions.filter(function (q) { return !q.text || !q.text.trim(); }).length;
+    if (bad) {
+      if (!confirm(bad + ' soal masih kosong teksnya. Lanjutkan membuat form?')) return;
+    }
+    var noKey = payload.questions.filter(function (q) {
+      return TIPE_NEED_OPTIONS[q.type] && !(q.correctIdx && q.correctIdx.length);
+    }).length;
+    if (noKey) {
+      if (!confirm(noKey + ' soal belum punya kunci jawaban. Lanjutkan?')) return;
+    }
+
+    if (state.demo) {
+      showOverlay('Mode demo — membuat form…', 'Tidak ada koneksi Drive di pratinjau ini.');
+      setTimeout(function () {
+        hideOverlay();
+        showBuildResult({
+          demo: true,
+          title: payload.form.title || autoTitle(payload.spec),
+          formId: 'DEMO-1a2b3c',
+          editUrl: 'https://docs.google.com/forms/d/DEMO/edit',
+          publishUrl: 'https://docs.google.com/forms/d/DEMO/viewform',
+          folderName: 'Soal AI',
+          folderUrl: 'https://drive.google.com/drive/folders/DEMO',
+          jumlahSoal: payload.questions.length,
+          totalPoin: payload.questions.reduce(function (a, q) { return a + Number(q.points || 0); }, 0),
+          breakdown: countTypes(payload.questions),
+          kunci: { url: 'https://docs.google.com/spreadsheets/d/DEMO/edit' }
+        });
+      }, 1100);
+      return;
+    }
+
+    showOverlay('Membuat Google Form…', payload.questions.length + ' soal sedang ditulis ke Form + kunci jawaban.');
+    $('btnBuild').disabled = true;
+    srv('buildFormFromQuestions').run(payload,
+      function (res) {
+        $('btnBuild').disabled = false;
+        hideOverlay();
+        if (!res || !res.ok) {
+          showBuildError((res && errText(res)) || 'Gagal membuat form.');
+          toast('Gagal membuat form.', 'err');
+          return;
+        }
+        showBuildResult(res.result);
+        toast('Form berhasil dibuat!', 'ok');
+      },
+      function (err) {
+        $('btnBuild').disabled = false;
+        hideOverlay();
+        showBuildErrorerrText(err);
+        toast('Error: ' + errText(err), 'err');
+      });
+  }
+
+  function countTypes(list) {
+    var c = {};
+    list.forEach(function (q) { c[q.type] = (c[q.type] || 0) + 1; });
+    return c;
+  }
+
+  function showBuildResult(r) {
+    var breakdown = Object.keys(r.breakdown || {}).map(function (t) {
+      return (TIPE_LABEL[t] || t) + ': ' + r.breakdown[t];
+    }).join(' · ');
+
+    var html = '' +
+      '<h4>' + (r.demo ? '🧪 Hasil (mode demo)' : '✅ Google Form berhasil dibuat') + '</h4>' +
+      '<div class="links">' +
+      '<a href="' + esc(r.editUrl) + '" target="_blank" rel="noopener">📝 Buka Form untuk diedit</a>' +
+      '<a href="' + esc(r.publishUrl) + '" target="_blank" rel="noopener">🔗 Link form untuk siswa (bagikan ini)</a>' +
+      (r.kunci && r.kunci.url ? '<a href="' + esc(r.kunci.url) + '" target="_blank" rel="noopener">🔑 Spreadsheet kunci jawaban</a>' : '') +
+      (r.folderUrl ? '<a href="' + esc(r.folderUrl) + '" target="_blank" rel="noopener">📁 Folder Drive: ' + esc(r.folderName || '') + '</a>' : '') +
+      '</div>' +
+      '<div class="meta">' + esc(r.title || '') + ' · ' + r.jumlahSoal + ' soal · ' + r.totalPoin + ' poin' +
+      (breakdown ? '<br>' + esc(breakdown) : '') +
+      (r.demo ? '<br><b>Deploy ke Apps Script agar form benar-benar dibuat.</b>' : '') +
+      '</div>';
+
+    var box = $('resultBox');
+    box.className = 'result';
+    box.innerHTML = html;
+    box.hidden = false;
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function showBuildError(msg) {
+    var box = $('resultBox');
+    box.className = 'result error';
+    box.innerHTML = '<h4>❌ Gagal membuat form</h4><div class="meta">' + esc(msg) + '</div>' +
+      '<div class="meta">Tips: periksa kuota API, izin Drive (folder harus bisa ditulisi), dan coba lagi. ' +
+      'Soal Anda tetap aman di tab Pratinjau.</div>';
+    box.hidden = false;
+  }
+
+  function showResult(box, ok, msg) {
+    if (!box) return;
+    box.className = 'result small' + (ok ? '' : ' error');
+    box.innerHTML = '<div class="meta">' + esc(msg) + '</div>';
+    box.hidden = false;
+  }
+
+  /* ========================== 10. PENGATURAN AI ========================== */
+  function loadConfig() {
+    if (state.demo) {
+      state.config = {
+        provider: 'gemini', model: '', modelRotasi: DEMO_MODELS.slice(), hasKey: false,
+        keys: [], jmlKey: 0, keySiap: 0, keyIstirahat: 0, keyBermasalah: 0, autoRotate: true,
+        version: 'demo', batasDetik: 240,
+        defaultModels: { gemini: DEMO_MODELS.slice(), openai: ['gpt-4o-mini', 'gpt-4o'] }
+      };
+      paintConfig();
+      $('demoBanner').hidden = false;
+      $('ver').textContent = 'demo';
+      return;
+    }
+    srv('getAiConfig').run(function (cfg) {
+      state.config = cfg || state.config;
+      paintConfig();
+      $('ver').textContent = cfg.version || '1.0';
+      if (cfg.userEmail) $('userEmail').textContent = cfg.userEmail;
+      if (!cfg.hasKey) toast('Langkah 1: tempel API key Gemini di tab Pengaturan (boleh banyak, satu per baris).', 'warn');
+      else if (cfg.keyBermasalah) toast(cfg.keyBermasalah + ' key sedang bermasalah — lihat panel Status API Key.', 'warn');
+    }, function (err) {
+      toast('Gagal memuat konfigurasi: ' + errText(err), 'err');
+    });
+  }
+
+  function paintConfig() {
+    var c = state.config;
+    $('s-provider').value = c.provider || 'gemini';
+    $('s-model').value = c.autoRotate ? '' : (c.model || '');
+    $('s-model').placeholder = 'auto — rotasi: ' + ((c.modelRotasi || c.defaultModels.gemini || []).slice(0, 3).join(' → ')) + ' …';
+    $('s-baseurl').value = c.baseUrl || '';
+    $('baseUrlField').hidden = (c.provider !== 'openai');
+
+    $('keyStatus').textContent = c.hasKey
+      ? c.jmlKey + ' key terpasang · ' + c.keySiap + ' siap · ' +
+        (c.keyIstirahat || 0) + ' istirahat · ' + (c.keyBermasalah || 0) + ' bermasalah'
+      : 'Belum ada key terpasang.';
+    $('pillModel').textContent = 'AI: ' + (c.autoRotate ? 'rotasi' : (c.model || '-')) +
+      (c.hasKey ? ' · ' + c.jmlKey + ' key' : ' · tanpa key') + (state.demo ? ' · demo' : '');
+    if (c.batasDetik) {
+      $('infoBatas').textContent = 'Rotasi berhenti setelah ±' + c.batasDetik +
+        ' detik agar tidak menabrak batas 6 menit Apps Script. Untuk soal banyak, bagi jadi 2× generate.';
+    }
+    paintKeyStatus(c);
+    fillModelDatalist(c.provider);
+  }
+
+  /** Panel status: hanya 4 digit terakhir tiap key, plus status cooldown. */
+  function paintKeyStatus(c) {
+    var box = $('keyStatusBox');
+    if (!box) return;
+    var keys = c.keys || [];
+    if (!keys.length) {
+      box.innerHTML = '<p class="ks-empty">Belum ada API key terpasang.</p>';
+      return;
+    }
+    var head = '<div class="ks-head">' +
+      '<span class="pill">' + keys.length + ' key</span>' +
+      '<span class="pill">' + (c.keySiap || 0) + ' siap</span>' +
+      (c.keyIstirahat ? '<span class="pill">' + c.keyIstirahat + ' istirahat</span>' : '') +
+      (c.keyBermasalah ? '<span class="pill">' + c.keyBermasalah + ' bermasalah</span>' : '') +
+      '<span class="pill">cursor: key#' + (c.keyCursor || 0) + '</span>' +
+      '</div>';
+    var rows = keys.map(function (k) {
+      var isCursor = (k.index === (c.keyCursor || 0));
+      return '<div class="ks-item">' +
+        '<span class="ks-label">' + esc(k.label || ('key#' + k.index)) + '</span>' +
+        '<span class="ks-tail">…' + esc(k.ekor) + '</span>' +
+        (isCursor ? '<span class="ks-cursor">← berikutnya</span>' : '') +
+        '<span class="ks-badge ' + esc(k.status) + '">' + esc(k.status) + '</span>' +
+        '</div>';
+    }).join('');
+    var modelLine = '<div class="ks-item"><span class="ks-label">Model</span>' +
+      '<span class="ks-tail">' + esc(c.autoRotate ? 'rotasi otomatis' : (c.model || '-')) + '</span>' +
+      '<span class="ks-badge siap">' + esc(c.modelAktif || '') + '</span></div>';
+    box.innerHTML = head + rows + modelLine;
+  }
+
+  function refreshKeyStatus() {
+    if (state.demo) {
+      state.config.keys = [
+        { index: 0, label: 'key#0', ekor: 'Ab12', status: 'siap' },
+        { index: 1, label: 'key#1', ekor: 'Cd34', status: 'istirahat' },
+        { index: 2, label: 'key#2', ekor: 'Ef56', status: 'bermasalah' }
+      ];
+      state.config.jmlKey = 3; state.config.keySiap = 1;
+      state.config.keyIstirahat = 1; state.config.keyBermasalah = 1;
+      state.config.hasKey = true; state.config.keyCursor = 0;
+      paintConfig();
+      toast('Mode demo: status contoh ditampilkan.', 'warn');
+      return;
+    }
+    srv('getKeyStatus').run(function (res) {
+      if (!res || !res.ok) {
+        toast('Status gagal dimuat (key tetap tersimpan): ' + errText(res || '-'), 'warn');
+        return;
+      }
+      var st = res.status;
+      state.config.hasKey = st.terpasang;
+      state.config.jmlKey = st.jml;
+      state.config.keySiap = st.jml_siap;
+      state.config.keyIstirahat = st.jml_istirahat;
+      state.config.keyBermasalah = st.jml_bermasalah;
+      state.config.keyCursor = st.cursor;
+      state.config.keys = st.key;
+      state.config.modelAktif = st.model_aktif;
+      state.config.modelRotasi = st.model;
+      state.config.autoRotate = !st.model_pilihan;
+      state.config.model = st.model_pilihan || '';
+      paintConfig();
+      toast(st.jml + ' key diperiksa: ' + st.jml_siap + ' siap, ' +
+        st.jml_istirahat + ' istirahat, ' + st.jml_bermasalah + ' bermasalah.',
+        st.jml_siap ? 'ok' : 'warn');
+    }, function (err) { toast('Error: ' + errText(err), 'err'); });
+  }
+
+  function resetCooldown() {
+    if (state.demo) { toast('Mode demo: tidak ada cooldown nyata.', 'warn'); return; }
+    srv('resetAiCooldown').run(function (res) {
+      if (res && res.config) { state.config = res.config; paintConfig(); }
+      toast('Cooldown dihapus — semua key & model dicoba ulang.', 'ok');
+      refreshKeyStatus();
+    }, function (err) { toast('Gagal: ' + errText(err), 'err'); });
+  }
+
+  function fillModelDatalist(provider) {
+    var c = state.config;
+    var list = provider === 'openai'
+      ? ((c.defaultModels && c.defaultModels.openai) || ['gpt-4o-mini', 'gpt-4o'])
+      : (c.modelRotasi && c.modelRotasi.length ? c.modelRotasi
+        : ((c.defaultModels && c.defaultModels.gemini) || DEMO_MODELS.slice()));
+    var items = ['auto'].concat(list);
+    $('dl-models').innerHTML = items.map(function (m) {
+      return '<option value="' + esc(m) + '">';
+    }).join('');
+  }
+
+  function collectKeysFromTextarea() {
+    return $('s-keys').value.split(/[\n,;]+/)
+      .map(function (k) { return k.trim(); })
+      .filter(function (k) { return k.length > 0 && k.indexOf('\u2022') === -1 && k.indexOf('*') === -1; });
+  }
+
+  function saveConfig() {
+    var provider = $('s-provider').value;
+    var keys = collectKeysFromTextarea();
+    var modelRaw = $('s-model').value.trim();
+    var cfg = {
+      provider: provider,
+      model: (!modelRaw || modelRaw === 'auto') ? '' : modelRaw,
+      baseUrl: $('s-baseurl').value.trim()
+    };
+    if (keys.length) cfg.apiKeys = keys;
+
+    if (state.demo) {
+      state.config.provider = provider;
+      state.config.model = cfg.model;
+      state.config.autoRotate = !cfg.model;
+      state.config.hasKey = keys.length > 0;
+      state.config.jmlKey = keys.length;
+      state.config.keySiap = keys.length;
+      state.config.keys = keys.map(function (k, i) {
+        return { index: i, label: 'key#' + i, ekor: k.slice(-4), status: 'siap' };
+      });
+      $('s-keys').value = '';
+      paintConfig();
+      toast('Mode demo: pengaturan tidak benar-benar disimpan.', 'warn');
+      return;
+    }
+
+    srv('saveAiConfig').run(cfg, function (res) {
+      state.config = res;
+      $('s-keys').value = '';
+      paintConfig();
+      toast(keys.length
+        ? (keys.length + ' key tersimpan di Script Properties (GEMINI_KEYS).')
+        : 'Pengaturan tersimpan di Script Properties.', 'ok');
+      if (res && res.peringatan) toast('Peringatan: ' + res.peringatan, 'warn');
+      try { refreshKeyStatus(); } catch (e) { /* status gagal ≠ simpan gagal */ }
+    }, function (err) { toast('Gagal menyimpan: ' + errText(err), 'err'); });
+  }
+
+  function testConnection() {
+    if (state.demo) { toast('Mode demo: tes koneksi tidak tersedia.', 'warn'); return; }
+    var btn = $('btnTest'); btn.disabled = true; btn.textContent = 'Menguji…';
+    showResult($('testResult'), true, 'Mencoba seluruh key × model…');
+    var modelRaw = $('s-model').value.trim();
+    srv('testAiConnection').run((!modelRaw || modelRaw === 'auto') ? '' : modelRaw, function (res) {
+      btn.disabled = false; btn.textContent = 'Tes Koneksi';
+      showResult($('testResult'), !!res.ok, res.message);
+      toast(res.ok ? 'Koneksi AI OK.' : 'Koneksi gagal.', res.ok ? 'ok' : 'err');
+      refreshKeyStatus();
+    }, function (err) {
+      btn.disabled = false; btn.textContent = 'Tes Koneksi';
+      showResult($('testResult'), false, errText(err));
+    });
+  }
+
+  function listModels() {
+    if (state.demo) { toast('Mode demo.', 'warn'); return; }
+    srv('listGeminiModels').run(function (res) {
+      if (!res || !res.ok) { toast('Gagal: ' + errText(res || '-'), 'err'); return; }
+      $('dl-models').innerHTML = ['auto'].concat(res.models).map(function (m) {
+        return '<option value="' + esc(m) + '">';
+      }).join('');
+      toast(res.models.length + ' model tersedia lewat ' + (res.key || 'key') +
+        '. Klik kolom Model untuk memilih.', 'ok');
+    }, function (err) { toast('Error: ' + errText(err), 'err'); });
+  }
+
+  function clearKey() {
+    if (!confirm('Hapus SEMUA API key dari Script Properties?')) return;
+    if (state.demo) { toast('Mode demo.', 'warn'); return; }
+    srv('clearAiKey').run(function (res) {
+      state.config = res; paintConfig(); toast('Semua API key dihapus.', 'ok');
+    }, function (err) { toast('Gagal: ' + errText(err), 'err'); });
+  }
+
+  /* ========================== 11. DATA DEMO ========================== */
+  function demoQuestions(spec) {
+    var topik = spec.topik || 'Sistem pencernaan manusia';
+    var p = spec.poin || 10;
+    return [
+      {
+        type: 'pg', text: 'Perhatikan pernyataan berikut!\nEnzim yang dihasilkan oleh lambung dan berfungsi mengubah protein menjadi pepton adalah …',
+        options: ['Amilase', 'Pepsin', 'Lipase', 'Tripsin'], correctIdx: [1], points: p, level: 'C2',
+        explanation: 'Pepsin dihasilkan lambung (dari pepsinogen yang diaktifkan HCl) dan memecah protein menjadi pepton.',
+        answerText: ''
+      },
+      {
+        type: 'pg_kompleks', text: 'Manakah pernyataan yang BENAR tentang fungsi usus halus? (Pilih 2 jawaban)',
+        options: ['Menyerap sari-sari makanan melalui vili', 'Menghasilkan asam klorida', 'Tempat pencernaan kimiawi oleh enzim dari pankreas', 'Menyimpan empedu'],
+        correctIdx: [0, 2], points: p, level: 'C4',
+        explanation: 'Usus halus memiliki vili untuk penyerapan dan menerima enzim pankreas; HCl dihasilkan lambung, empedu disimpan di kantung empedu.',
+        answerText: ''
+      },
+      {
+        type: 'dropdown', text: 'Urutan saluran pencernaan yang benar mulai dari mulut adalah …',
+        options: ['Kerongkongan – lambung – usus halus – usus besar', 'Lambung – kerongkongan – usus besar – usus halus', 'Kerongkongan – usus halus – lambung – usus besar', 'Usus halus – lambung – kerongkongan – usus besar'],
+        correctIdx: [0], points: p, level: 'C3',
+        explanation: 'Alur: mulut → kerongkongan → lambung → usus halus → usus besar → anus.',
+        answerText: ''
+      },
+      {
+        type: 'isian', text: 'Cairan yang dihasilkan hati dan berfungsi mengemulsikan lemak disebut …',
+        options: ['Empedu'], correctIdx: [0], points: p, level: 'C1',
+        explanation: 'Empedu mengemulsikan lemak agar mudah dicerna lipase.',
+        answerText: 'Empedu'
+      },
+      {
+        type: 'essay', text: 'Jelaskan keterkaitan struktur vili pada usus halus dengan fungsinya dalam penyerapan sari makanan! Sertakan minimal dua alasan.',
+        options: [], correctIdx: [], points: p * 2, level: 'C5',
+        explanation: 'Poin kunci: (1) vili memperluas permukaan penyerapan; (2) mengandung kapiler darah & pembuluh limfa sehingga sari makanan cepat diedarkan; (3) dindingnya tipis (selapis sel) mempercepat difusi.',
+        answerText: 'Vili memperluas permukaan penyerapan dan mengandung kapiler darah sehingga absorpsi efisien.'
+      },
+      {
+        type: 'pg', text: 'Seorang siswa mengeluh nyeri ulu hati setelah sering terlambat makan. Gangguan yang paling mungkin terjadi adalah …',
+        options: ['Maag akibat iritasi dinding lambung', 'Diare karena infeksi usus besar', 'Sembelit karena kurang serat', 'Apendisitis karena infeksi usus buntu'],
+        correctIdx: [0], points: p, level: 'C4',
+        explanation: 'Pola makan tidak teratur membuat asam lambung mengiritasi dinding lambung (gastritis/maag).',
+        answerText: ''
+      }
+    ];
+  }
+
+  function fillSample() {
+    $('f-mapel').value = 'IPA';
+    $('f-kelas').value = 'VIII SMP';
+    $('f-kurikulum').value = 'Kurikulum Merdeka';
+    $('f-topik').value = 'Sistem pencernaan manusia: organ, enzim, dan gangguan pencernaan';
+    $('f-cpTp').value = 'Peserta didik dapat menganalisis keterkaitan struktur organ pencernaan dengan fungsinya serta gangguan yang mungkin terjadi.';
+    $('f-indikator').value = '1) Menentukan fungsi enzim pencernaan\n2) Menganalisis hubungan struktur vili dan penyerapan\n3) Mendiagnosis gangguan pencernaan dari gejala';
+    $('f-jumlah').value = 10;
+    $('f-poin').value = 10;
+    $('f-kesulitan').value = 'campuran';
+    $('f-preset').value = 'hots';
+    setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
+    setChips('chips-level', ['C3', 'C4', 'C5']);
+    $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
+    updateEstimate();
+    toast('Contoh spesifikasi dimuat.', 'ok');
+  }
+
+  function resetSpec() {
+    ['f-mapel', 'f-kelas', 'f-topik', 'f-cpTp', 'f-indikator', 'f-materi', 'f-instruksi'].forEach(function (id) { $(id).value = ''; });
+    $('f-jumlah').value = 10; $('f-poin').value = 10;
+    $('f-kesulitan').value = 'sedang'; $('f-preset').value = 'umum'; $('f-bahasa').value = 'id';
+    $('f-temp').value = 0.8; $('out-temp').textContent = '0.8';
+    if ($('f-thinking')) $('f-thinking').value = '';
+    setChips('chips-tipe', ['pg']);
+    setChips('chips-level', ['C3', 'C4']);
+    updateEstimate();
+    toast('Spesifikasi direset.');
+  }
+
+  /* ========================== 12. TEMA ========================== */
+  function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem('soal-ai-theme'); } catch (e) {}
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+    $('btnTheme').addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? '' : 'dark';
+      if (cur) document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('soal-ai-theme', cur); } catch (e) {}
+    });
+  }
+
+  /* ========================== 13. BINDING ========================== */
+  function bind() {
+    // navigasi
+    qa('[data-goto]').forEach(function (b) {
+      b.addEventListener('click', function () { goto(b.getAttribute('data-goto')); });
+    });
+
+    // stepper jumlah
+    qa('[data-step]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = $(b.getAttribute('data-step'));
+        var min = Number(el.min || 1), max = Number(el.max || 50);
+        el.value = Math.max(min, Math.min(max, (Number(el.value) || min) + Number(b.getAttribute('data-delta'))));
+        updateEstimate();
+      });
+    });
+
+    $('f-jumlah').addEventListener('input', updateEstimate);
+    $('f-poin').addEventListener('input', updateEstimate);
+    qa('#chips-tipe input').forEach(function (c) { c.addEventListener('change', updateEstimate); });
+    $('f-temp').addEventListener('input', function () { $('out-temp').textContent = this.value; });
+
+    $('btnGenerate').addEventListener('click', function () { generate(0); });
+    $('btnSample').addEventListener('click', fillSample);
+    $('btnResetSpec').addEventListener('click', resetSpec);
+    $('btnLoadDemo').addEventListener('click', function () {
+      state.questions = demoQuestions(collectSpec());
+      state.meta = { model: 'contoh', provider: 'demo' };
+      renderQuestions();
+      toast('Contoh soal dimuat.', 'ok');
+    });
+    $('btnRegenAll').addEventListener('click', function () { goto(1); toast('Sesuaikan spesifikasi lalu klik Generate.', 'warn'); });
+
+    // panel 2
+    $('btnJsonView').addEventListener('click', function () { showJson($('jsonBox').hidden); });
+    $('btnApplyJson').addEventListener('click', applyJson);
+    $('btnCopyJson').addEventListener('click', copyJson);
+    $('btnDownloadJson').addEventListener('click', downloadJson);
+    $('btnImportJson').addEventListener('click', function () {
+      showJson(true);
+      toast('Tempel JSON di kotak lalu klik "Terapkan JSON ke Pratinjau".', 'warn');
+    });
+    $('btnAddManual').addEventListener('click', addManual);
+
+    // panel 3
+    $('btnBuild').addEventListener('click', buildForm);
+    $('btnSaveKey').addEventListener('click', saveConfig);
+    $('btnTest').addEventListener('click', testConnection);
+    $('btnListModels').addEventListener('click', listModels);
+    $('btnClearKey').addEventListener('click', clearKey);
+    $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
+    $('btnResetCooldown').addEventListener('click', resetCooldown);
+    $('s-provider').addEventListener('change', function () {
+      $('baseUrlField').hidden = this.value !== 'openai';
+      fillModelDatalist(this.value);
+      $('s-model').value = this.value === 'openai' ? 'gpt-4o-mini' : '';
+      $('s-keys').placeholder = this.value === 'openai'
+        ? 'sk-… (satu per baris)'
+        : 'AIzaSy… (satu per baris, boleh banyak)';
+    });
+
+    bindList();
+
+    // simpan spesifikasi ke localStorage (bila diizinkan)
+    var fields = ['f-mapel', 'f-kelas', 'f-topik', 'f-poin', 'f-jumlah'];
+    fields.forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        try { localStorage.setItem('soal-ai-' + id, $(id).value); } catch (e) {}
+      });
+      try {
+        var v = localStorage.getItem('soal-ai-' + id);
+        if (v !== null && v !== '') $(id).value = v;
+      } catch (e) {}
+    });
+  }
+
+  /* ========================== 14. INIT ========================== */
+  function init() {
+    initTheme();
+    bind();
+    updateEstimate();
+    loadConfig();
+    if (state.demo) {
+      $('emptyState').hidden = false;
+    }
+    goto(1);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>

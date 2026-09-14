@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soal AI ➜ Google Form</title>
+  <?!= include('Stylesheet'); ?>
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- ======================= HEADER ======================= -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z" />
+            <path d="M18 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" />
+          </svg>
+        </span>
+        <span class="brand-text">
+          <strong>Soal AI</strong>
+          <em>➜ Google Form</em>
+        </span>
+      </div>
+
+      <nav class="stepper" id="stepper">
+        <button class="step is-active" data-goto="1" type="button">
+          <span class="step-n">1</span><span class="step-t">Generate</span>
+        </button>
+        <button class="step" data-goto="2" type="button">
+          <span class="step-n">2</span><span class="step-t">Pratinjau &amp; Edit</span>
+        </button>
+        <button class="step" data-goto="3" type="button">
+          <span class="step-n">3</span><span class="step-t">Pengaturan</span>
+        </button>
+      </nav>
+
+      <div class="topbar-side">
+        <span class="pill" id="pillModel" title="Model AI aktif">AI: —</span>
+        <button class="icon-btn" id="btnTheme" type="button" title="Ganti tema">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"
+            stroke-linecap="round">
+            <circle cx="12" cy="12" r="4.2" />
+            <path d="M12 2.6v2.2M12 19.2v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="banner" id="demoBanner" hidden>
+      <strong>Mode Pratinjau (demo).</strong>
+      Halaman ini dibuka di luar Google Apps Script, jadi tidak ada koneksi ke AI/Drive. Semua tombol memakai data contoh
+      supaya Anda bisa melihat alur &amp; tampilannya. Deploy ke Apps Script agar berfungsi penuh.
+    </div>
+
+    <main class="main">
+
+      <!-- ======================= PANEL 1: GENERATE ======================= -->
+      <section class="panel is-active" id="panel-1">
+        <div class="grid">
+
+          <div class="card span-8">
+            <h2 class="card-title">
+              <span class="dot"></span> Spesifikasi Soal
+            </h2>
+
+            <div class="row-3">
+              <label class="field">
+                <span>Mata pelajaran</span>
+                <input id="f-mapel" list="dl-mapel" placeholder="IPA, Matematika, B. Indonesia…">
+                <datalist id="dl-mapel">
+                  <option value="Matematika"></option>
+                  <option value="IPA"></option>
+                  <option value="IPS"></option>
+                  <option value="Bahasa Indonesia"></option>
+                  <option value="Bahasa Inggris"></option>
+                  <option value="Pendidikan Pancasila"></option>
+                  <option value="Informatika"></option>
+                  <option value="PAI &amp; Budi Pekerti"></option>
+                  <option value="PJOK"></option>
+                  <option value="Seni Budaya"></option>
+                  <option value="Prakarya"></option>
+                </datalist>
+              </label>
+
+              <label class="field">
+                <span>Kelas / jenjang</span>
+                <input id="f-kelas" list="dl-kelas" placeholder="VIII SMP">
+                <datalist id="dl-kelas">
+                  <option value="IV SD"></option>
+                  <option value="V SD"></option>
+                  <option value="VI SD"></option>
+                  <option value="VII SMP"></option>
+                  <option value="VIII SMP"></option>
+                  <option value="IX SMP"></option>
+                  <option value="X SMA"></option>
+                  <option value="XI SMA"></option>
+                  <option value="XII SMA"></option>
+                  <option value="X SMK"></option>
+                  <option value="XI SMK"></option>
+                  <option value="XII SMK"></option>
+                </datalist>
+              </label>
+
+              <label class="field">
+                <span>Kurikulum</span>
+                <select id="f-kurikulum">
+                  <option value="Kurikulum Merdeka">Kurikulum Merdeka</option>
+                  <option value="Kurikulum 2013">Kurikulum 2013</option>
+                  <option value="Cambridge">Cambridge</option>
+                  <option value="IB">IB (International Baccalaureate)</option>
+                  <option value="Umum">Umum / bebas</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Topik / materi <b class="req">*</b></span>
+              <input id="f-topik" placeholder="Contoh: Sistem pencernaan manusia dan enzim-enzimnya">
+            </label>
+
+            <label class="field">
+              <span>Capaian Pembelajaran / Tujuan Pembelajaran <small class="hint">(opsional)</small></span>
+              <textarea id="f-cpTp" rows="2"
+                placeholder="Peserta didik dapat menganalisis keterkaitan struktur organ pencernaan dengan fungsinya…"></textarea>
+            </label>
+
+            <label class="field">
+              <span>Indikator soal <small class="hint">(opsional, satu per baris)</small></span>
+              <textarea id="f-indikator" rows="2"
+                placeholder="Disajikan data makanan, peserta didik dapat menentukan enzim yang berperan…"></textarea>
+            </label>
+
+            <div class="row-4">
+              <label class="field">
+                <span>Jumlah soal</span>
+                <div class="stepper-input">
+                  <button type="button" data-step="f-jumlah" data-delta="-1">−</button>
+                  <input id="f-jumlah" type="number" min="1" max="50" value="10">
+                  <button type="button" data-step="f-jumlah" data-delta="1">+</button>
+                </div>
+              </label>
+
+              <label class="field">
+                <span>Poin per soal</span>
+                <input id="f-poin" type="number" min="1" max="100" value="10">
+              </label>
+
+              <label class="field">
+                <span>Tingkat kesulitan</span>
+                <select id="f-kesulitan">
+                  <option value="mudah">Mudah</option>
+                  <option value="sedang" selected>Sedang</option>
+                  <option value="sulit">Sulit</option>
+                  <option value="campuran">Campuran (HOTS bertingkat)</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Bahasa soal</span>
+                <select id="f-bahasa">
+                  <option value="id" selected>Bahasa Indonesia</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="field">
+              <span>Tipe soal <small class="hint">(boleh lebih dari satu)</small></span>
+              <div class="chips" id="chips-tipe">
+                <label class="chip"><input type="checkbox" value="pg" checked><span>Pilihan Ganda</span></label>
+                <label class="chip"><input type="checkbox" value="pg_kompleks"><span>PG Kompleks</span></label>
+                <label class="chip"><input type="checkbox" value="dropdown"><span>Dropdown</span></label>
+                <label class="chip"><input type="checkbox" value="isian"><span>Isian Singkat</span></label>
+                <label class="chip"><input type="checkbox" value="essay"><span>Essay</span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <span>Level kognitif (Bloom)</span>
+              <div class="chips" id="chips-level">
+                <label class="chip"><input type="checkbox" value="C1"><span>C1 Mengingat</span></label>
+                <label class="chip"><input type="checkbox" value="C2"><span>C2 Memahami</span></label>
+                <label class="chip"><input type="checkbox" value="C3" checked><span>C3 Menerapkan</span></label>
+                <label class="chip"><input type="checkbox" value="C4" checked><span>C4 Menganalisis</span></label>
+                <label class="chip"><input type="checkbox" value="C5"><span>C5 Mengevaluasi</span></label>
+                <label class="chip"><input type="checkbox" value="C6"><span>C6 Mencipta</span></label>
+              </div>
+            </div>
+
+            <div class="row-2">
+              <label class="field">
+                <span>Preset gaya soal</span>
+                <select id="f-preset">
+                  <option value="umum">Umum</option>
+                  <option value="hots">Fokus HOTS</option>
+                  <option value="akm">AKM / ANBK (literasi &amp; numerasi)</option>
+                  <option value="uts">PTS / UTS</option>
+                  <option value="uas">PAS / UAS</option>
+                  <option value="olimpiade">Olimpiade / pengayaan</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Kreativitas AI (temperature)</span>
+                <div class="range-wrap">
+                  <input id="f-temp" type="range" min="0" max="1.4" step="0.1" value="0.8">
+                  <output id="out-temp">0.8</output>
+                </div>
+                <small class="hint">Rendah = konsisten &amp; aman · Tinggi = variasi lebih kaya</small>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Materi acuan <small class="hint">(opsional — tempel ringkasan/catatan; AI hanya membuat soal dari sini)</small></span>
+              <textarea id="f-materi" rows="4" placeholder="Tempel ringkasan materi, kutipan buku, atau catatan guru…"></textarea>
+            </label>
+
+            <label class="field">
+              <span>Instruksi tambahan untuk AI <small class="hint">(opsional)</small></span>
+              <textarea id="f-instruksi" rows="2"
+                placeholder="Contoh: gunakan konteks pertanian di Lumajang, hindari istilah asing, setiap soal ada stimulus singkat."></textarea>
+            </label>
+
+            <div class="row-3">
+              <label class="field">
+                <span>Thinking <small class="hint">(Gemini 2.5+/3.x)</small></span>
+                <select id="f-thinking">
+                  <option value="off" selected>off — tercepat, kuota irit (disarankan)</option>
+                  <option value="auto">auto — adaptif per model</option>
+                  <option value="low">low</option>
+                  <option value="minimal">minimal</option>
+                  <option value="high">high — soal HOTS kompleks</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Format jawaban AI</span>
+                <select id="f-format">
+                  <option value="json" selected>JSON terstruktur (disarankan)</option>
+                  <option value="teks">Teks biasa (lalu di-parse)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Pembahasan</span>
+                <div class="switch-row">
+                  <label class="switch"><input type="checkbox" id="f-pembahasan" checked><span class="slider"></span></label>
+                  <span>Sertakan pembahasan tiap soal</span>
+                </div>
+              </label>
+            </div>
+
+            <div class="actions">
+              <button class="btn primary big" id="btnGenerate" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+                </svg>
+                Generate Soal dengan AI
+              </button>
+              <button class="btn ghost" id="btnSample" type="button" title="Isi contoh spesifikasi">
+                Isi Contoh
+              </button>
+              <button class="btn ghost" id="btnResetSpec" type="button">Reset</button>
+            </div>
+          </div>
+
+          <aside class="card span-4">
+            <h2 class="card-title"><span class="dot alt"></span> Cara Kerja</h2>
+            <ol class="howto">
+              <li>Simpan <b>API key</b> di tab <b>Pengaturan</b> (sekali saja).</li>
+              <li>Isi spesifikasi, klik <b>Generate</b> — AI mengembalikan JSON soal.</li>
+              <li><b>Pratinjau &amp; edit</b> tiap soal, kunci jawaban, dan pembahasan.</li>
+              <li>Klik <b>Buat Google Form</b> → form mode Kuis + spreadsheet kunci jawaban jadi otomatis.</li>
+            </ol>
+
+            <div class="info-box">
+              <strong>Estimasi</strong>
+              <p id="estimate">10 soal ≈ 8–20 detik · ±9.000 token output.</p>
+            </div>
+
+            <div class="info-box warn">
+              <strong>Wajib ditinjau guru</strong>
+              <p>AI bisa salah. Selalu periksa kunci jawaban &amp; pembahasan sebelum form dibagikan ke siswa.</p>
+            </div>
+
+            <div class="info-box">
+              <strong>Batas Apps Script</strong>
+              <p>UrlFetchApp maksimal ±6 menit/eksekusi. Untuk 30+ soal, bagi jadi 2× generate agar aman.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ======================= PANEL 2: PRATINJAU ======================= -->
+      <section class="panel" id="panel-2">
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title"><span class="dot"></span> Hasil Soal <span class="badge" id="badgeCount">0</span></h2>
+            <div class="toolbar">
+              <button class="btn small" id="btnJsonView" type="button">{ } Lihat JSON</button>
+              <button class="btn small" id="btnImportJson" type="button">Impor JSON</button>
+              <button class="btn small" id="btnAddManual" type="button">+ Tambah Soal</button>
+              <button class="btn small ghost" id="btnRegenAll" type="button">↻ Generate Ulang Semua</button>
+            </div>
+          </div>
+
+          <div class="summary" id="summary" hidden></div>
+
+          <div id="jsonBox" class="json-box" hidden>
+            <textarea id="jsonArea" spellcheck="false"></textarea>
+            <div class="json-actions">
+              <button class="btn small primary" id="btnApplyJson" type="button">Terapkan JSON ke Pratinjau</button>
+              <button class="btn small ghost" id="btnCopyJson" type="button">Salin</button>
+              <button class="btn small ghost" id="btnDownloadJson" type="button">Unduh .json</button>
+            </div>
+          </div>
+
+          <div id="emptyState" class="empty">
+            <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 3h9l4 4v14H6z" />
+              <path d="M14 3v5h5M9 13h7M9 17h5" />
+            </svg>
+            <p>Belum ada soal. Kembali ke tab <b>Generate</b> lalu klik <b>Generate Soal dengan AI</b>.</p>
+            <button class="btn ghost" id="btnLoadDemo" type="button">Muat Contoh Soal (demo)</button>
+          </div>
+
+          <div id="qList" class="q-list"></div>
+
+          <div class="actions sticky-actions" id="previewActions" hidden>
+            <button class="btn ghost" data-goto="1" type="button">← Ubah Spesifikasi</button>
+            <button class="btn primary big" data-goto="3" type="button">
+              Lanjut ke Pengaturan Form →
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= PANEL 3: PENGATURAN ======================= -->
+      <section class="panel" id="panel-3">
+        <div class="grid">
+
+          <div class="card span-7">
+            <h2 class="card-title"><span class="dot"></span> Google Form</h2>
+
+            <label class="field">
+              <span>Judul form</span>
+              <input id="g-title" placeholder="Otomatis dari spesifikasi bila dikosongkan">
+            </label>
+
+            <label class="field">
+              <span>Deskripsi form</span>
+              <textarea id="g-desc" rows="3" placeholder="Petunjuk pengerjaan, nama guru, alokasi waktu…"></textarea>
+            </label>
+
+            <div class="row-2">
+              <label class="field">
+                <span>Folder Drive tujuan <small class="hint">(ID/URL, kosong = folder "Soal AI")</small></span>
+                <input id="g-folder" placeholder="1AbC…  atau  https://drive.google.com/drive/folders/…">
+              </label>
+              <label class="field">
+                <span>Tempel ke form yang sudah ada <small class="hint">(opsional)</small></span>
+                <input id="g-target" placeholder="ID / URL form tujuan">
+              </label>
+            </div>
+
+            <h3 class="sub-title">Opsi form</h3>
+            <div class="switch-grid">
+              <label class="switch-row"><input type="checkbox" id="g-isQuiz" checked><span>Mode Kuis (poin &amp; umpan balik otomatis)</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-buatKunci" checked><span>Buat Spreadsheet kunci jawaban</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-acakSoal"><span>Acak urutan soal</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-acakOpsi"><span>Acak urutan opsi jawaban</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-wajibSemua" checked><span>Semua soal wajib dijawab</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-nomorOtomatis" checked><span>Nomori soal otomatis (1., 2., …)</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-tampilkanLevel"><span>Tampilkan level kognitif di judul soal</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-requireLogin"><span>Wajib login Google</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-limitOne"><span>Batasi 1 respons per pengguna</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-collectEmail"><span>Kumpulkan alamat email</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-progress" checked><span>Tampilkan bilah progres</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-validasiIsian" checked><span>Pakai validasi kunci untuk isian singkat</span></label>
+            </div>
+
+            <div class="actions">
+              <button class="btn primary big" id="btnBuild" type="button">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 6h16M4 12h10M4 18h7" />
+                </svg>
+                Buat Google Form Sekarang
+              </button>
+              <button class="btn ghost" data-goto="2" type="button">← Kembali ke Soal</button>
+            </div>
+
+            <div id="resultBox" class="result" hidden></div>
+          </div>
+
+          <aside class="card span-5">
+            <h2 class="card-title"><span class="dot alt"></span> Koneksi AI</h2>
+
+            <label class="field">
+              <span>Provider</span>
+              <select id="s-provider">
+                <option value="gemini" selected>Google Gemini (gratis, disarankan)</option>
+                <option value="openai">OpenAI / kompatibel (base URL bisa diubah)</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>API Key <b class="req">*</b> <small class="hint">satu key per baris — boleh banyak</small></span>
+              <textarea id="s-keys" rows="4" spellcheck="false"
+                placeholder="AIzaSy… (baris 1)&#10;AIzaSy… (baris 2)&#10;AIzaSy… (baris 3)"></textarea>
+              <small class="hint" id="keyStatus">Belum ada key terpasang.</small>
+              <small class="hint">
+                Kuota gratis Gemini dihitung per <b>project × model</b>. Memasang beberapa key
+                (maks 20) membuat aplikasi bisa <b>merotasi otomatis</b> saat satu key kehabisan kuota.
+              </small>
+            </label>
+
+            <label class="field">
+              <span>Model</span>
+              <div class="input-group">
+                <input id="s-model" list="dl-models" placeholder="auto">
+                <button class="btn small ghost" id="btnListModels" type="button" title="Ambil daftar model dari akun Anda">⟳</button>
+              </div>
+              <datalist id="dl-models"></datalist>
+              <small class="hint">
+                Kosongkan / ketik <b>auto</b> untuk <b>rotasi model otomatis</b>:
+                gemini-3.6-flash → 3.5-flash → 3.5-flash-lite → 2.5-flash-lite → 2.5-flash → 2.0-flash.
+                Bila satu model kehabisan kuota harian, model berikutnya dipakai tanpa menambah key.
+              </small>
+            </label>
+
+            <label class="field" id="baseUrlField" hidden>
+              <span>Base URL kustom</span>
+              <input id="s-baseurl" placeholder="https://api.openai.com/v1">
+            </label>
+
+            <div class="field">
+              <span>Status API Key</span>
+              <div id="keyStatusBox" class="key-status">
+                <p class="hint">Klik <b>Muat Status</b> untuk melihat kondisi key &amp; model.</p>
+              </div>
+              <div class="actions" style="margin-top:8px">
+                <button class="btn small ghost" id="btnRefreshStatus" type="button">Muat Status</button>
+                <button class="btn small ghost" id="btnResetCooldown" type="button">Reset Cooldown</button>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button class="btn primary" id="btnSaveKey" type="button">Simpan Pengaturan</button>
+              <button class="btn ghost" id="btnTest" type="button">Tes Koneksi</button>
+              <button class="btn danger ghost" id="btnClearKey" type="button">Hapus Key</button>
+            </div>
+
+            <div class="info-box">
+              <strong>Ambil API key Gemini</strong>
+              <p>
+                Buka <b>aistudio.google.com/apikey</b> → <i>Create API key</i> → salin.
+                Tiap proyek Google Cloud mendapat kuota sendiri, jadi beberapa key = beberapa proyek
+                = kapasitas berlipat. Gratis.
+              </p>
+            </div>
+
+            <div class="info-box">
+              <strong>Keamanan</strong>
+              <p>Key disimpan di <b>Script Properties</b> (<code>GEMINI_KEYS</code>) dan tidak pernah
+                dikirim utuh ke browser — panel status hanya menampilkan <b>4 digit terakhir</b>.
+                Jangan pernah menaruh key di file <code>JavaScript.html</code>.</p>
+            </div>
+
+            <div class="info-box warn">
+              <strong>Batas waktu</strong>
+              <p id="infoBatas">Rotasi berhenti setelah ±240 detik agar tidak menabrak batas
+                6 menit Apps Script. Untuk soal banyak, bagi jadi 2× generate.</p>
+            </div>
+
+            <div id="testResult" class="result small" hidden></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Soal AI ➜ Google Form · v<span id="ver">1.0</span></span>
+      <span id="userEmail"></span>
+    </footer>
+  </div>
+
+  <!-- ======================= OVERLAY PROSES ======================= -->
+  <div class="overlay" id="overlay" hidden>
+    <div class="overlay-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h3 id="overlayTitle">Sedang memproses…</h3>
+      <p id="overlayText">Menghubungi model AI…</p>
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+      <small class="hint">Jangan tutup tab ini. Apps Script butuh beberapa detik untuk merespons.</small>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <?!= include('JavaScript'); ?>
+</body>
+
+</html>
