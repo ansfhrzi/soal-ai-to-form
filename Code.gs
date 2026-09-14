@@ -14,9 +14,14 @@
  *              Execute as   : Me
  *              Who has access: Anyone with the link  (atau "Anyone within …")
  *
- *  API Key   : Diambil dari Script Properties (kunci: GEMINI_API_KEY atau
- *              OPENAI_API_KEY). Bisa diisi lewat tab "Pengaturan" di web app.
- *              Ambil gratis di https://aistudio.google.com/apikey
+ *  API Key   : Diambil dari Script Properties (kunci: GEMINI_KEYS / OPENAI_KEYS,
+ *              dengan GEMINI_API_KEY / OPENAI_API_KEY sebagai fallback versi
+ *              lama). Bisa diisi lewat tab "Pengaturan" di web app.
+ *              Ambil gratis di https://aistudio.google.com/api-keys
+ *              Sejak 2026 AI Studio menerbitkan AUTH key berawalan "AQ.";
+ *              Standard key lama "AIza…" masih diterima tetapi dihentikan
+ *              Google per September 2026. Key diperlakukan sebagai string
+ *              OPAK — jangan validasi awalan, biarkan API yang memutuskan.
  *
  *  Catatan   : Semua fungsi di bawah ini adalah "backend" yang dipanggil dari
  *              sisi client melalui google.script.run.
@@ -154,12 +159,20 @@ function saveAiConfig(cfg) {
   }
 
   var daftar = cfg.apiKeys;
+  var peringatanSimpan = '';
   if (!daftar && cfg.apiKey) daftar = String(cfg.apiKey).split(/[\n,;]+/);
   if (daftar) {
     var bersih = (Array.isArray(daftar) ? daftar : [daftar])
       .map(function (k) { return String(k || '').trim(); })
       .filter(function (k) { return k.length && !/[*\u2022\u2026]/.test(k); });
-    if (bersih.length) AiService.simpanKeys(bersih, provider);
+    if (bersih.length) {
+      var hasilSimpan = AiService.simpanKeys(bersih, provider);
+      /* Peringatan format (mis. Standard key AIza yang sedang dihentikan, atau
+         key Gemini dipasang pada provider OpenAI) TIDAK membatalkan penyimpanan
+         — tetapi harus sampai ke UI supaya guru tidak bingung saat key-nya
+         tiba-tiba ditolak API. */
+      peringatanSimpan = (hasilSimpan && hasilSimpan.peringatan) || '';
+    }
   }
 
   /* Key SUDAH tersimpan pada titik ini. Apa pun yang terjadi setelahnya
@@ -172,7 +185,14 @@ function saveAiConfig(cfg) {
     model: cfg.model || '(rotasi)',
     jmlKey: jml
   });
-  return getAiConfig();
+
+  var hasil = getAiConfig();
+  if (peringatanSimpan) {
+    hasil.peringatan = hasil.peringatan
+      ? (peringatanSimpan + ' ' + hasil.peringatan)
+      : peringatanSimpan;
+  }
+  return hasil;
 }
 
 /**
@@ -200,7 +220,8 @@ function saveAiKeys(apiKeys, provider) {
       return {
         ok: false, kode: 'VALIDASI_GAGAL',
         error: 'Tidak ada key yang bisa disimpan. Tempel minimal satu API key Gemini ' +
-          '(diawali "AIza", ±39 karakter) — satu key per baris.'
+          'dari https://aistudio.google.com/api-keys (Auth key baru diawali "AQ.", ' +
+          'Standard key lama "AIza…" juga diterima) — satu key per baris.'
       };
     }
     var res = AiService.simpanKeys(bersih, provider || '');

@@ -414,7 +414,7 @@
             <label class="field">
               <span>API Key <b class="req">*</b> <small class="hint">satu key per baris — boleh banyak</small></span>
               <textarea id="s-keys" rows="4" spellcheck="false"
-                placeholder="AIzaSy… (baris 1)&#10;AIzaSy… (baris 2)&#10;AIzaSy… (baris 3)"></textarea>
+                placeholder="AQ.Ab… (baris 1)&#10;AQ.Ac… (baris 2)&#10;AIzaSy… (key lama juga diterima)"></textarea>
               <small class="hint" id="keyStatus">Belum ada key terpasang.</small>
               <small class="hint">
                 Kuota gratis Gemini dihitung per <b>project × model</b>. Memasang beberapa key
@@ -461,9 +461,15 @@
             <div class="info-box">
               <strong>Ambil API key Gemini</strong>
               <p>
-                Buka <b>aistudio.google.com/apikey</b> → <i>Create API key</i> → salin.
+                Buka <b>aistudio.google.com/api-keys</b> → <i>Create API key</i> → salin.
                 Tiap proyek Google Cloud mendapat kuota sendiri, jadi beberapa key = beberapa proyek
                 = kapasitas berlipat. Gratis.
+              </p>
+              <p>
+                Key baru keluar sebagai <b>Auth key</b> berawalan <code>AQ.</code> — itu
+                <b>benar dan memang bawaan Google sekarang</b>. Standard key lama
+                <code>AIza…</code> masih diterima di sini, tetapi sudah mulai ditolak
+                Gemini API sejak September 2026, jadi sebaiknya pakai yang <code>AQ.</code>
               </p>
             </div>
 

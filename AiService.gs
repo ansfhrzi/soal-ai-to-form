@@ -149,47 +149,72 @@ var AiService = (function () {
       throw _err('VALIDASI_GAGAL', 'Maksimal ' + MAKS_KEY + ' key.');
     }
 
+    var peringatan = [];
+
     for (var i = 0; i < bersih.length; i++) {
-      /* Bentuk key Google: AIza… 39 karakter. Pemeriksaan ini sekadar
-         mencegah salah tempel — bukan jaminan key-nya sah. */
       var k = bersih[i];
-      if (provider !== 'openai') {
-        /* Yang paling sering salah tempel: TOKEN otorisasi sementara dari tombol
-           "Authorize with Google" (AQ.…, ya29.…, 4/0A…), OAuth code (4%2F…),
-           atau Access Token AI Studio. Bentuknya mirip key, panjangnya cukup,
-           tetapi Gemini akan menolaknya dengan 400 "API key not valid" — dan
-           key itu lalu ditandai rusak 24 jam. Tolak di depan dengan pesan yang
-           menyebut cara mengambil key yang benar. */
-        var polaToken = /^(AQ\.|ya29\.|4\/|4%2F|1\/\/|access_token$)/i;
-        if (polaToken.test(k) || k === 'access_token') {
-          throw _err('VALIDASI_GAGAL',
-            'Key ke-' + (i + 1) + ' ("' + k.slice(0, 6) + '…") adalah TOKEN otorisasi sementara, ' +
-            'BUKAN Gemini API key. Ambil key yang benar di https://aistudio.google.com/apikey ' +
-            '→ "Create API key" → salin yang diawali "AIza" (±39 karakter).');
-        }
-        if (k.length >= 30 && k.indexOf('AIza') !== 0) {
-          throw _err('VALIDASI_GAGAL',
-            'Key ke-' + (i + 1) + ' tidak diawali "AIza" (terima: "' + k.slice(0, 6) + '…"). ' +
-            'Gemini API key selalu berbentuk AIza… dengan panjang ±39 karakter. ' +
-            'Ambil di https://aistudio.google.com/apikey.');
-        }
-        if (k.indexOf(' ') !== -1) {
-          throw _err('VALIDASI_GAGAL',
-            'Key ke-' + (i + 1) + ' (…' + k.slice(-4) + ') mengandung spasi — ' +
-            'tempel satu key per baris tanpa spasi.');
-        }
-        if (k.length < 30) {
-          throw _err('VALIDASI_GAGAL',
-            'Key ke-' + (i + 1) + ' terlalu pendek (' + k.length + ' karakter, terpotong?). ' +
-            'API key Gemini berbentuk AIza… dengan panjang ±39 karakter.');
-        }
-        if (k.indexOf('\u2022') !== -1 || k.indexOf('*') !== -1) {
-          throw _err('VALIDASI_GAGAL',
-            'Key ke-' + (i + 1) + ' tampak seperti versi tersamar (mengandung • atau *), ' +
-            'bukan key asli. Tempel ulang dari AI Studio.');
-        }
-      } else if (k.indexOf(' ') !== -1) {
-        throw _err('VALIDASI_GAGAL', 'Key ke-' + (i + 1) + ' mengandung spasi.');
+
+      /* ===== KEY ADALAH KREDENSIAL OPAK — JANGAN VALIDASI AWALAN =====
+         Bentuk key adalah milik penyedia, bukan kontrak kita. Sejak 2026
+         Google AI Studio menerbitkan "Auth key" berawalan `AQ.Ab…` sebagai
+         BAWAAN, dan "Standard key" `AIza…` justru dihentikan (permintaan dari
+         Standard key ditolak mulai September 2026). Memaksa awalan `AIza`
+         berarti menolak key yang SAH setiap kali Google mengganti format.
+         Yang diperiksa di sini hanyalah tanda salah-tempel yang pasti salah,
+         apa pun format key-nya. */
+
+      if (k.indexOf('\u2022') !== -1 || k.indexOf('*') !== -1) {
+        throw _err('VALIDASI_GAGAL',
+          'Key ke-' + (i + 1) + ' tampak seperti versi tersamar (mengandung • atau *), ' +
+          'bukan key asli. Tempel ulang dari https://aistudio.google.com/api-keys.');
+      }
+      if (/\s/.test(k)) {
+        throw _err('VALIDASI_GAGAL',
+          'Key ke-' + (i + 1) + ' (…' + k.slice(-4) + ') mengandung spasi/baris baru di tengah — ' +
+          'tempel satu key per baris, tanpa spasi.');
+      }
+      if (k.length < 20) {
+        throw _err('VALIDASI_GAGAL',
+          'Key ke-' + (i + 1) + ' terlalu pendek (' + k.length + ' karakter) — kemungkinan terpotong ' +
+          'saat menyalin. Salin ulang seluruh key dari AI Studio.');
+      }
+      if (k.length > 4096) {
+        throw _err('VALIDASI_GAGAL',
+          'Key ke-' + (i + 1) + ' terlalu panjang (' + k.length + ' karakter) — ' +
+          'tampaknya bukan satu key.');
+      }
+
+      /* OAuth access token / authorization code (tombol "Authorize with Google",
+         `gcloud auth print-access-token`, kolom OAuth di AI Studio). Bentuknya
+         mirip key dan cukup panjang, tetapi Gemini menolaknya dengan 401 dan
+         key lalu ditandai rusak 24 jam.
+         PENTING: awalan "AQ." SENGAJA TIDAK DITOLAK — itu justru awalan Auth
+         key resmi AI Studio sejak 2026. */
+      var polaOAuth = /^(ya29[._-]|4\/0[A-Za-z0-9]|4%2F|1\/\/0|Bearer\s)/i;
+      if (polaOAuth.test(k) || k.toLowerCase() === 'access_token') {
+        throw _err('VALIDASI_GAGAL',
+          'Key ke-' + (i + 1) + ' ("' + k.slice(0, 6) + '…") adalah OAuth access token / ' +
+          'authorization code, BUKAN API key. Ambil API key di ' +
+          'https://aistudio.google.com/api-keys → "Create API key" → salin key-nya. ' +
+          'Auth key baru diawali "AQ."; Standard key lama "AIza…" juga masih diterima di sini.');
+      }
+    }
+
+    /* ---- peringatan non-fatal: key TETAP disimpan, guru hanya diberi tahu ---- */
+    if (provider === 'openai') {
+      var nyasar = bersih.filter(function (k) { return /^(AQ\.|AIza)/i.test(k); }).length;
+      if (nyasar) {
+        peringatan.push(nyasar + ' key tampaknya Gemini API key, tetapi provider disetel ' +
+          '"OpenAI / kompatibel". Auth key Gemini (AQ…) DITOLAK di endpoint OpenAI-compatible ' +
+          '(400 "Multiple authentication credentials received"). Pilih provider "Google Gemini", ' +
+          'atau pakai key dari penyedia OpenAI-compatible Anda.');
+      }
+    } else {
+      var lama = bersih.filter(function (k) { return /^AIza/i.test(k); }).length;
+      if (lama) {
+        peringatan.push(lama + ' key berformat Standard ("AIza…"). Google menolak Standard key ' +
+          'mulai September 2026 — bila key ini error 401, buat Auth key baru (diawali "AQ.") di ' +
+          'https://aistudio.google.com/api-keys lalu simpan ulang.');
       }
     }
 
@@ -197,7 +222,32 @@ var AiService = (function () {
       JSON.stringify(bersih));
     _resetCooldownSemua(Math.max(bersih.length, 1));
     _log('simpan_api_key', { provider: provider, jumlah: bersih.length });
-    return { jml: bersih.length, provider: provider };
+    return { jml: bersih.length, provider: provider, peringatan: peringatan.join(' ') };
+  }
+
+  /**
+   * Memperjelas SEBAB sebuah key ditolak.
+   * Sejak September 2026 Gemini API menolak Standard key ("AIza…"), tetapi
+   * balasannya hanya berbunyi "Expected OAuth 2 access token, login cookie or
+   * other valid authentication credential" / "API key not valid" — tidak
+   * menyebut penyebab sebenarnya. Tanpa keterangan ini guru akan mengira
+   * key-nya salah tempel, lalu menempel ulang key yang sama dan gagal lagi.
+   */
+  function _keteranganKeyDitolak(key, pesan) {
+    var p = String(pesan || '').trim();
+    var k = String(key || '');
+    if (/^AIza/i.test(k)) {
+      return (p ? p + ' — ' : '') +
+        'key ini berformat STANDARD ("AIza…") yang dihentikan Google mulai September 2026. ' +
+        'Buat AUTH key baru (diawali "AQ.") di https://aistudio.google.com/api-keys, ' +
+        'lalu simpan ulang di tab Pengaturan.';
+    }
+    if (/Expected OAuth 2 access token|ACCESS_TOKEN_TYPE_UNSUPPORTED|API key not valid|invalid_api_key|API_KEY_INVALID/i.test(p)) {
+      return p + ' — pastikan ini API key dari https://aistudio.google.com/api-keys ' +
+        '(Auth key diawali "AQ."), bukan OAuth access token sementara dari tombol ' +
+        '"Authorize with Google".';
+    }
+    return p;
   }
 
   /** Status key untuk panel guru. HANYA 4 digit terakhir yang ditampilkan. */
@@ -614,11 +664,16 @@ var AiService = (function () {
         var mulai = Date.now();
         var resp;
         try {
+          /* Key dikirim lewat HEADER `x-goog-api-key` (cara yang didokumentasikan
+             Google untuk Standard key maupun Auth key), bukan `?key=` di URL.
+             Selain itu cara resmi, ini juga menjaga key tidak ikut tercetak di
+             URL/log, dan menghindari masalah encoding pada Auth key "AQ.…". */
           resp = UrlFetchApp.fetch(
-            GEMINI_ENDPOINT + modelIni + ':generateContent?key=' + encodeURIComponent(keys[cursor]),
+            GEMINI_ENDPOINT + modelIni + ':generateContent',
             {
               method: 'post',
               contentType: 'application/json',
+              headers: { 'x-goog-api-key': keys[cursor] },
               payload: muatan,
               muteHttpExceptions: true
             });
@@ -720,7 +775,8 @@ var AiService = (function () {
             /API key|API_KEY|permission|PERMISSION_DENIED|unregistered/i.test(pesanAsli);
           if (soalKey) {
             _pasangCooldownKey(cursor, CD_RUSAK, 'rusak');
-            terakhirGagal = 'key#' + cursor + ' ditolak: ' + (pesanAsli || kode);
+            terakhirGagal = 'key#' + cursor + ' ditolak: ' +
+              (_keteranganKeyDitolak(keys[cursor], pesanAsli) || kode);
             continue;
           }
 
@@ -891,6 +947,10 @@ var AiService = (function () {
       try {
         resp = UrlFetchApp.fetch(base + '/chat/completions', {
           method: 'post', contentType: 'application/json',
+          /* Tanpa header ini permintaan TIDAK PERNAH terautentikasi — server
+             OpenAI-compatible selalu membalas 401 dan key lalu ditandai rusak
+             24 jam padahal key-nya benar. */
+          headers: { 'Authorization': 'Bearer ' + keys[cursor] },
           payload: JSON.stringify(badan), muteHttpExceptions: true
         });
       } catch (e) { terakhirGagal = 'gangguan jaringan'; _sleep(JEDA_SERVER); continue; }
@@ -907,7 +967,8 @@ var AiService = (function () {
       var pesan = _pesanError(isi);
       if (kode === 401 || kode === 403) {
         _pasangCooldownKey(cursor, CD_RUSAK, 'rusak');
-        terakhirGagal = 'key#' + cursor + ' ditolak: ' + pesan;
+        terakhirGagal = 'key#' + cursor + ' ditolak: ' +
+          (_keteranganKeyDitolak(keys[cursor], pesan) || kode);
         continue;
       }
       if (kode === 429) {
@@ -943,8 +1004,8 @@ var AiService = (function () {
     for (var i = 0; i < keys.length; i++) {
       try {
         var res = UrlFetchApp.fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(keys[i]),
-          { method: 'get', muteHttpExceptions: true });
+          'https://generativelanguage.googleapis.com/v1beta/models',
+          { method: 'get', headers: { 'x-goog-api-key': keys[i] }, muteHttpExceptions: true });
         if (res.getResponseCode() !== 200) { terakhir = _pesanError(res.getContentText()); continue; }
         var j = JSON.parse(res.getContentText());
         var nama = (j.models || [])
@@ -1427,6 +1488,7 @@ var AiService = (function () {
     _ambilTeks: _ambilTeks,
     _terpotong: _terpotong,
     _pesanError: _pesanError,
+    _keteranganKeyDitolak: _keteranganKeyDitolak,
     _bersihkanJson: _bersihkanJson,
     _daftarModel: _daftarModel,
     _keys: _keys,
