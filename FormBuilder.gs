@@ -200,8 +200,8 @@ var FormBuilder = (function () {
   }
 
   /**
-   * Isian biodata di awal form: Nama, Kelas, No. Absen.
-   * Bukan soal kuis (poin 0) tetapi wajib diisi.
+   * Isian biodata di Bagian 1: Nama, Kelas, No. Absen.
+   * Bukan soal kuis (poin 0) tetapi wajib diisi. Soal di Bagian 2.
    */
   function addBiodata_(form, opts, dilewati) {
     try {
@@ -524,17 +524,21 @@ var FormBuilder = (function () {
     cobaSet_('setCollectEmail', opts.collectEmail);
     if (opts.limitOne) cobaSet_('setLimitOneResponsePerUser', true);
 
-    // ---------- Section header (opsional, biar rapi) ----------
-    if (o.pakaiSection) {
-      form.addPageBreakItem()
-        .setTitle(title)
-        .setHelpText(desc.substring(0, 300));
-    }
-
-    // ---------- Biodata siswa (Nama, Kelas, No. Absen) ----------
+    // ---------- Bagian 1: biodata · Bagian 2: soal ----------
     var dilewati = [];
     if (o.biodata !== false) {
       addBiodata_(form, opts, dilewati);
+      try {
+        var pb = form.addPageBreakItem();
+        pb.setTitle('Soal');
+        try { pb.setHelpText('Kerjakan soal berikut.'); } catch (ePbH) {}
+      } catch (ePb) {
+        dilewati.push('bagian soal (page break)');
+      }
+    } else if (o.pakaiSection) {
+      form.addPageBreakItem()
+        .setTitle(title)
+        .setHelpText(desc.substring(0, 300));
     }
 
     // ---------- Tambahkan soal ----------
