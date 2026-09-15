@@ -24,7 +24,7 @@
  */
 
 /** Versi aplikasi — dipakai untuk cache-busting & info di UI. */
-var APP_VERSION = '1.0.16';
+var APP_VERSION = '1.0.17';
 
 /* ============================ ENTRY POINT WEB APP ======================== */
 

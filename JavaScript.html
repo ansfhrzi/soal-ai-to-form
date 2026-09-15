@@ -1239,6 +1239,190 @@
         if (fileEl.files && fileEl.files[0]) setWordFile(fileEl.files[0]);
       });
     }
+    qa('#tplGrid [data-tpl]').forEach(function (b) {
+      b.addEventListener('click', function () { unduhTemplate(b.getAttribute('data-tpl')); });
+    });
+    if ($('btnParseWord')) $('btnParseWord').addEventListener('click', parseWordUpload);
+    if ($('btnClearWord')) $('btnClearWord').addEventListener('click', clearWordUpload);
+    if ($('btnImportWord')) {
+      $('btnImportWord').addEventListener('click', function () {
+        goto(1);
+        setSumberMode('word');
+        toast('Pilih file Word, lalu Konversi Word → Pratinjau.', 'warn');
+      });
+    }
+
+    $('btnGenerate').addEventListener('click', function () { generate(0); });
+    $('btnSample').addEventListener('click', fillSample);
+    $('btnResetSpec').addEventListener('click', resetSpec);
+    $('btnLoadDemo').addEventListener('click', function () {
+      state.questions = demoQuestions(collectSpec());
+      state.meta = { model: 'contoh', provider: 'demo' };
+      renderQuestions();
+      toast('Contoh soal dimuat.', 'ok');
+    });
+    $('btnRegenAll').addEventListener('click', function () { goto(1); toast('Sesuaikan spesifikasi lalu klik Generate.', 'warn'); });
+
+    // panel 2
+    $('btnJsonView').addEventListener('click', function () { showJson($('jsonBox').hidden); });
+    $('btnApplyJson').addEventListener('click', applyJson);
+    $('btnCopyJson').addEventListener('click', copyJson);
+    $('btnDownloadJson').addEventListener('click', downloadJson);
+    $('btnImportJson').addEventListener('click', function () {
+      showJson(true);
+      toast('Tempel JSON di kotak lalu klik "Terapkan JSON ke Pratinjau".', 'warn');
+    });
+    $('btnAddManual').addEventListener('click', addManual);
+
+    // panel 3
+    $('btnBuild').addEventListener('click', buildForm);
+    $('btnSaveKey').addEventListener('click', saveConfig);
+    $('btnTest').addEventListener('click', testConnection);
+    $('btnListModels').addEventListener('click', listModels);
+    $('btnClearKey').addEventListener('click', clearKey);
+    $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
+    $('btnResetCooldown').addEventListener('click', resetCooldown);
+    $('s-provider').addEventListener('change', function () {
+      $('baseUrlField').hidden = this.value !== 'openai';
+      fillModelDatalist(this.value);
+      $('s-model').value = this.value === 'openai' ? 'gpt-4o-mini' : '';
+      $('s-keys').placeholder = this.value === 'openai'
+        ? 'sk-… (satu per baris)'
+        : 'AIzaSy… (satu per baris, boleh banyak)';
+    });
+
+    bindList();
+
+    // simpan spesifikasi ke localStorage (bila diizinkan)
+    var fields = ['f-mapel', 'f-kelas', 'f-topik', 'f-poin', 'f-jumlah'];
+    fields.forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        try { localStorage.setItem('soal-ai-' + id, $(id).value); } catch (e) {}
+      });
+      try {
+        var v = localStorage.getItem('soal-ai-' + id);
+        if (v !== null && v !== '') $(id).value = v;
+      } catch (e) {}
+    });
+  }
+
+  /* ========================== 14. INIT ========================== */
+  function init() {
+    initTheme();
+    bind();
+    updateEstimate();
+    loadConfig();
+    if (state.demo) {
+      $('emptyState').hidden = false;
+    }
+    goto(1);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+ terlambat makan. Gangguan yang paling mungkin terjadi adalah …',
+        options: ['Maag akibat iritasi dinding lambung', 'Diare karena infeksi usus besar', 'Sembelit karena kurang serat', 'Apendisitis karena infeksi usus buntu'],
+        correctIdx: [0], points: p, level: 'C4',
+        explanation: 'Pola makan tidak teratur membuat asam lambung mengiritasi dinding lambung (gastritis/maag).',
+        answerText: ''
+      }
+    ];
+  }
+
+  function fillSample() {
+    $('f-mapel').value = 'IPA';
+    $('f-kelas').value = 'VIII SMP';
+    $('f-kurikulum').value = 'Kurikulum Merdeka';
+    $('f-topik').value = 'Sistem pencernaan manusia: organ, enzim, dan gangguan pencernaan';
+    $('f-cpTp').value = 'Peserta didik dapat menganalisis keterkaitan struktur organ pencernaan dengan fungsinya serta gangguan yang mungkin terjadi.';
+    $('f-indikator').value = '1) Menentukan fungsi enzim pencernaan\n2) Menganalisis hubungan struktur vili dan penyerapan\n3) Mendiagnosis gangguan pencernaan dari gejala';
+    $('f-jumlah').value = 10;
+    $('f-poin').value = 10;
+    $('f-kesulitan').value = 'campuran';
+    $('f-preset').value = 'hots';
+    setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
+    setChips('chips-level', ['C3', 'C4', 'C5']);
+    $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
+    updateEstimate();
+    toast('Contoh spesifikasi dimuat.', 'ok');
+  }
+
+  function resetSpec() {
+    ['f-mapel', 'f-kelas', 'f-topik', 'f-cpTp', 'f-indikator', 'f-materi', 'f-instruksi'].forEach(function (id) { $(id).value = ''; });
+    $('f-jumlah').value = 10; $('f-poin').value = 10;
+    $('f-kesulitan').value = 'sedang'; $('f-preset').value = 'umum'; $('f-bahasa').value = 'id';
+    $('f-temp').value = 0.8; $('out-temp').textContent = '0.8';
+    if ($('f-thinking')) $('f-thinking').value = '';
+    setChips('chips-tipe', ['pg']);
+    setChips('chips-level', ['C3', 'C4']);
+    updateEstimate();
+    toast('Spesifikasi direset.');
+  }
+
+  /* ========================== 12. TEMA ========================== */
+  function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem('soal-ai-theme'); } catch (e) {}
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+    $('btnTheme').addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? '' : 'dark';
+      if (cur) document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('soal-ai-theme', cur); } catch (e) {}
+    });
+  }
+
+  /* ========================== 13. BINDING ========================== */
+  function bind() {
+    // navigasi
+    qa('[data-goto]').forEach(function (b) {
+      b.addEventListener('click', function () { goto(b.getAttribute('data-goto')); });
+    });
+
+    // stepper jumlah
+    qa('[data-step]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = $(b.getAttribute('data-step'));
+        var min = Number(el.min || 1), max = Number(el.max || 50);
+        el.value = Math.max(min, Math.min(max, (Number(el.value) || min) + Number(b.getAttribute('data-delta'))));
+        updateEstimate();
+      });
+    });
+
+    $('f-jumlah').addEventListener('input', updateEstimate);
+    $('f-poin').addEventListener('input', updateEstimate);
+    qa('#chips-tipe input').forEach(function (c) { c.addEventListener('change', updateEstimate); });
+    $('f-temp').addEventListener('input', function () { $('out-temp').textContent = this.value; });
+
+    qa('#modeTabs [data-src]').forEach(function (b) {
+      b.addEventListener('click', function () { setSumberMode(b.getAttribute('data-src')); });
+    });
+    var drop = $('wordDrop');
+    var fileEl = $('wordFile');
+    if (drop && fileEl) {
+      drop.addEventListener('click', function (e) {
+        if (e.target && e.target.id === 'wordFile') return;
+        fileEl.click();
+      });
+      drop.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileEl.click(); }
+      });
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('is-drag'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('is-drag'); });
+      });
+      drop.addEventListener('drop', function (e) {
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) setWordFile(f);
+      });
+      fileEl.addEventListener('change', function () {
+        if (fileEl.files && fileEl.files[0]) setWordFile(fileEl.files[0]);
+      });
+    }
     if ($('btnParseWord')) $('btnParseWord').addEventListener('click', parseWordUpload);
     if ($('btnClearWord')) $('btnClearWord').addEventListener('click', clearWordUpload);
     if ($('btnImportWord')) {
