@@ -527,7 +527,6 @@
 
     var text = String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).replace(/\r\n/g, '\n').trim();
     var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
-    if (stim && text.indexOf(stim) === -1) text = stim + '\n\n' + text;
 
     return {
       type: type,
