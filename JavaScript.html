@@ -60,14 +60,24 @@
   }
   function huruf(i) { return String.fromCharCode(65 + i); }
 
+  /** Ubah teks `\\n` dari AI jadi baris baru. */
+  function bukaBaris(s) {
+    return String(s == null ? '' : s)
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n');
+  }
+
   /** Tempel paparan/cerita/wacana ke dalam teks soal — UI & Form hanya memakai q.text. */
   function gabungTeksSoal(q, stimulusGlobal) {
     q = q || {};
-    var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
+    var stim = bukaBaris(q.stimulus || q.wacana || '').trim();
     if (!stim && (q.pakaiStimulus || q.pakai_stimulus) && stimulusGlobal) {
-      stim = String(stimulusGlobal).replace(/\r\n/g, '\n').trim();
+      stim = bukaBaris(stimulusGlobal).trim();
     }
-    q.text = String(q.text || q.pertanyaan || q.question || '').replace(/\r\n/g, '\n').trim();
+    q.text = bukaBaris(q.text || q.pertanyaan || q.question || '').trim();
     if (stim) {
       q.stimulus = stim;
       q.pakaiStimulus = true;
@@ -345,8 +355,8 @@
       '</div>' +
       '<div class="q-body">' +
       '<div class="q-wacana"><span>Wacana / paparan <small>(kosongkan jika soal mandiri)</small></span>' +
-      '<textarea class="q-stim" data-i="' + i + '" placeholder="Teks bacaan/paparan. Di Google Form jadi Judul + Deskripsi.">' + esc(q.stimulus || '') + '</textarea></div>' +
-      '<textarea class="q-text" data-i="' + i + '" placeholder="Kalimat tanya saja…">' + esc(q.text) + '</textarea>' +
+      '<textarea class="q-stim" data-i="' + i + '" placeholder="Teks bacaan/paparan. Di Google Form jadi Judul + Deskripsi.">' + esc(bukaBaris(q.stimulus || '')) + '</textarea></div>' +
+      '<textarea class="q-text" data-i="' + i + '" placeholder="Kalimat tanya saja…">' + esc(bukaBaris(q.text)) + '</textarea>' +
       '<div class="opts" style="margin-top:10px">' + optsHtml + '</div>' +
       '<div class="q-extra">' +
       '<label><span>Pembahasan / umpan balik</span>' +
@@ -532,8 +542,8 @@
     }).filter(function (c) { return !isNaN(c) && c >= 0 && c < options.length; });
     if (!correct.length && options.length) correct = [0];
 
-    var text = String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).replace(/\r\n/g, '\n').trim();
-    var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
+    var text = bukaBaris(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).trim();
+    var stim = bukaBaris(q.stimulus || q.wacana || '').trim();
 
     return {
       type: type,

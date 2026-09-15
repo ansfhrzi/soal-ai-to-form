@@ -24,7 +24,7 @@
  */
 
 /** Versi aplikasi — dipakai untuk cache-busting & info di UI. */
-var APP_VERSION = '1.0.9';
+var APP_VERSION = '1.0.10';
 
 /* ============================ ENTRY POINT WEB APP ======================== */
 
@@ -401,6 +401,16 @@ function onSetup() {
 }
 
 /* ============================ UTILITAS =================================== */
+
+/** Ubah escape JSON (`\\n`) jadi baris baru sungguhan. */
+function bukaBarisBaru_(s) {
+  return String(s == null ? '' : s)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n');
+}
 
 /**
  * Tempel paparan/cerita/wacana ke dalam teks soal (satu kesatuan).

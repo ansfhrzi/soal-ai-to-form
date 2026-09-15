@@ -66,6 +66,15 @@ var FormBuilder = (function () {
 
   function huruf_(i) { return String.fromCharCode(65 + i); }
 
+  function bukaBarisBaru_(s) {
+    return String(s == null ? '' : s)
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n');
+  }
+
   var JUDUL_MAX_ = 300;
   var LABEL_WACANA_BAWAAN = 'Bacalah teks berikut untuk menjawab soal di bawah ini.';
 
@@ -166,8 +175,8 @@ var FormBuilder = (function () {
       ? String(rawBenar[0] == null ? '' : rawBenar[0]).trim()
       : '';
 
-    var stimulus = String(q.stimulus || q.wacana || q.bacaan || '').replace(/\r\n/g, '\n').trim();
-    var text = String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).replace(/\r\n/g, '\n').trim();
+    var stimulus = bukaBarisBaru_(q.stimulus || q.wacana || q.bacaan || '').trim();
+    var text = bukaBarisBaru_(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).trim();
     var pecah = pisahWacanaStem_(text, stimulus);
     if (pecah.wacana) {
       stimulus = pecah.wacana;

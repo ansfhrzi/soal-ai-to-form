@@ -1285,6 +1285,16 @@ var AiService = (function () {
     return t.length >= 280 && /\n/.test(t);
   }
 
+  /** Ubah escape JSON (`\\n`) jadi baris baru sungguhan. */
+  function bukaBarisBaru_(s) {
+    return String(s == null ? '' : s)
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n');
+  }
+
   /** Gabungkan wacana + pertanyaan, tanpa menduplikasi bila sudah tertanam. */
   function gabungStimulus_(stimulus, text) {
     var stim = String(stimulus || '').trim();
@@ -1348,11 +1358,11 @@ var AiService = (function () {
     else if (data.question) list = [data.question];
 
     var defaultPoints = Number(spec && spec.poin ? spec.poin : 1) || 1;
-    var stimulusGlobal = String(data.stimulus || '').trim();
+    var stimulusGlobal = bukaBarisBaru_(data.stimulus || '').trim();
 
     var hasil = list.map(function (q, i) {
       q = q || {};
-      var text = String(q.pertanyaan || q.question || q.text || q.soal || '').trim();
+      var text = bukaBarisBaru_(q.pertanyaan || q.question || q.text || q.soal || '').trim();
 
       var opsiRaw = q.opsi || q.options || q.pilihan || [];
       if (!Array.isArray(opsiRaw)) opsiRaw = [];
@@ -1413,7 +1423,7 @@ var AiService = (function () {
 
       /* Stimulus tetap terpisah. Jika wacana terselip di pertanyaan, dipisah. */
       var merujuk = merujukAcuan_(text);
-      var sisa = String(q.stimulus || q.wacana || '').trim();
+      var sisa = bukaBarisBaru_(q.stimulus || q.wacana || '').trim();
       if (!sisa && stimulusGlobal && (q.pakai_stimulus === true || merujuk)) sisa = stimulusGlobal;
       var pecah = pecahWacanaDariTeks_(text, sisa);
       if (pecah.wacana) sisa = pecah.wacana;
