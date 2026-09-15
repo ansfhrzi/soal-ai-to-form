@@ -15,8 +15,8 @@
  *              Who has access: Anyone with the link  (atau "Anyone within …")
  *
  *  API Key   : Diambil dari Script Properties (kunci: GEMINI_API_KEY atau
- *              OPENAI_API_KEY). Bisa diisi lewat tab "Pengaturan" di web app.
- *              Ambil gratis di https://aistudio.google.com/apikey
+ *              OPENAI_API_KEY). Admin mengisi lewat halaman ?page=ai
+ *              (Aiservice.html). Ambil gratis di https://aistudio.google.com/apikey
  *
  *  Catatan   : Semua fungsi di bawah ini adalah "backend" yang dipanggil dari
  *              sisi client melalui google.script.run.
@@ -24,7 +24,7 @@
  */
 
 /** Versi aplikasi — dipakai untuk cache-busting & info di UI. */
-var APP_VERSION = '1.0.21';
+var APP_VERSION = '1.0.22';
 
 /* ============================ ENTRY POINT WEB APP ======================== */
 
@@ -37,7 +37,6 @@ function doGet(e) {
   var url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (err) { url = ''; }
   t.homeUrl = url || '?';
-  t.aiUrl = url ? (url + '?page=ai') : '?page=ai';
   return t.evaluate()
     .setTitle(isAi ? 'Pengaturan AI · Soal AI' : 'Soal AI ➜ Google Form')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')

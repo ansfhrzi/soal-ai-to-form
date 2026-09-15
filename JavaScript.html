@@ -228,11 +228,7 @@
     }
 
     if (!state.config.hasKey) {
-      toast('API key belum disimpan. Buka halaman Pengaturan AI.', 'err');
-      var link = $('btnShowAi');
-      if (link && link.href) {
-        try { window.top.location.href = link.href; } catch (eNav) {}
-      }
+      toast('API key belum disimpan. Hubungi admin.', 'err');
       return;
     }
 
@@ -1092,18 +1088,6 @@
     box.hidden = false;
   }
 
-  function setAiSettingsVisible(show) {
-    var card = $('aiSettingsCard');
-    var formCard = $('formSettingsCard');
-    if (card) card.hidden = !show;
-    if (formCard) {
-      formCard.classList.toggle('span-12', !show);
-      formCard.classList.toggle('span-7', !!show);
-    }
-    if ($('btnShowAi')) $('btnShowAi').hidden = !!show;
-    if (show && card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-
   /* ========================== 10. PENGATURAN AI ========================== */
   function loadConfig() {
     if (state.demo) {
@@ -1131,6 +1115,12 @@
 
   function paintConfig() {
     var c = state.config;
+    if (c.version && $('ver')) $('ver').textContent = c.version;
+    if ($('pillModel')) {
+      $('pillModel').textContent = 'AI: ' + (c.autoRotate ? 'rotasi' : (c.model || '-')) +
+        (c.hasKey ? ' · ' + c.jmlKey + ' key' : ' · tanpa key') + (state.demo ? ' · demo' : '');
+    }
+    if (!$('s-provider')) return;
     $('s-provider').value = c.provider || 'gemini';
     $('s-model').value = c.autoRotate ? '' : (c.model || '');
     $('s-model').placeholder = 'auto — rotasi: ' + ((c.modelRotasi || c.defaultModels.gemini || []).slice(0, 3).join(' → ')) + ' …';
@@ -1140,9 +1130,7 @@
     $('keyStatus').textContent = c.hasKey
       ? c.jmlKey + ' key terpasang · ' + c.keySiap + ' siap · ' +
         (c.keyIstirahat || 0) + ' istirahat · ' + (c.keyBermasalah || 0) + ' bermasalah'
-      : 'Belum ada key terpasang.';
-    $('pillModel').textContent = 'AI: ' + (c.autoRotate ? 'rotasi' : (c.model || '-')) +
-      (c.hasKey ? ' · ' + c.jmlKey + ' key' : ' · tanpa key') + (state.demo ? ' · demo' : '');
+        : 'Belum ada key terpasang.';
     if (c.batasDetik) {
       $('infoBatas').textContent = 'Rotasi berhenti setelah ±' + c.batasDetik +
         ' detik agar tidak menabrak batas 6 menit Apps Script. Untuk soal banyak, bagi jadi 2× generate.';
@@ -1537,18 +1525,6 @@
     initTheme();
     bind();
     updateEstimate();
-    loadConfig();
-    if (state.demo) {
-      $('emptyState').hidden = false;
-    }
-    goto(1);
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-})();
-</script>
-timate();
     loadConfig();
     if (state.demo) {
       $('emptyState').hidden = false;
