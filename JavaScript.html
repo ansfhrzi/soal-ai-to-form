@@ -638,6 +638,218 @@
     }
   }
 
+
+  function downloadBlob(blob, filename) {
+    try {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+      return true;
+    } catch (e) {
+      toast('Unduhan diblokir di pratinjau. Salin teks templatenya dari kotak tempel.', 'warn');
+      return false;
+    }
+  }
+
+  function utf8Bytes(str) {
+    var out = [];
+    var i, c, c2, cp;
+    for (i = 0; i < str.length; i++) {
+      c = str.charCodeAt(i);
+      if (c < 128) out.push(c);
+      else if (c < 2048) out.push(192 | (c >> 6), 128 | (c & 63));
+      else if (c >= 0xD800 && c <= 0xDBFF) {
+        c2 = str.charCodeAt(++i);
+        cp = 0x10000 + ((c - 0xD800) << 10) + (c2 - 0xDC00);
+        out.push(240 | (cp >> 18), 128 | ((cp >> 12) & 63), 128 | ((cp >> 6) & 63), 128 | (cp & 63));
+      } else out.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
+    }
+    return new Uint8Array(out);
+  }
+
+  var CRC_TABLE = (function () {
+    var t = new Uint32Array(256), n, k, c;
+    for (n = 0; n < 256; n++) {
+      c = n;
+      for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32Bytes(u8) {
+    var c = 0xFFFFFFFF, i;
+    for (i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function concatBytes(parts) {
+    var len = 0, i, o = 0, out;
+    for (i = 0; i < parts.length; i++) len += parts[i].length;
+    out = new Uint8Array(len);
+    for (i = 0; i < parts.length; i++) { out.set(parts[i], o); o += parts[i].length; }
+    return out;
+  }
+
+  function u16b(n) { return new Uint8Array([n & 255, (n >>> 8) & 255]); }
+  function u32b(n) {
+    return new Uint8Array([n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]);
+  }
+
+  function zipStore(files) {
+    var locals = [], centrals = [], offset = 0, i;
+    for (i = 0; i < files.length; i++) {
+      var name = utf8Bytes(files[i].name);
+      var data = files[i].data;
+      var crc = crc32Bytes(data);
+      var local = concatBytes([
+        new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        u32b(crc), u32b(data.length), u32b(data.length), u16b(name.length), u16b(0),
+        name, data
+      ]);
+      var central = concatBytes([
+        new Uint8Array([0x50, 0x4b, 0x01, 0x02, 0x14, 0, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        u32b(crc), u32b(data.length), u32b(data.length),
+        u16b(name.length), u16b(0), u16b(0), u16b(0), u16b(0), u32b(0), u32b(offset),
+        name
+      ]);
+      locals.push(local);
+      centrals.push(central);
+      offset += local.length;
+    }
+    var loc = concatBytes(locals);
+    var cen = concatBytes(centrals);
+    var eocd = concatBytes([
+      new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]),
+      u16b(files.length), u16b(files.length), u32b(cen.length), u32b(loc.length), u16b(0)
+    ]);
+    return concatBytes([loc, cen, eocd]);
+  }
+
+  function xmlEscTpl(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function teksKeDocx(lines) {
+    var paras = lines.map(function (ln) {
+      if (!String(ln).length) return '<w:p/>';
+      return '<w:p><w:r><w:t xml:space="preserve">' + xmlEscTpl(ln) + '</w:t></w:r></w:p>';
+    }).join('');
+    var documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:body>' + paras + '<w:sectPr/></w:body></w:document>';
+    var ctypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '</Types>';
+    var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      '</Relationships>';
+    var docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    var bytes = zipStore([
+      { name: '[Content_Types].xml', data: utf8Bytes(ctypes) },
+      { name: '_rels/.rels', data: utf8Bytes(rels) },
+      { name: 'word/document.xml', data: utf8Bytes(documentXml) },
+      { name: 'word/_rels/document.xml.rels', data: utf8Bytes(docRels) }
+    ]);
+    return new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  }
+
+  function templateSoal(jenis) {
+    var head = [
+      'PETUNJUK PENGISIAN TEMPLATE',
+      '- Ganti teks contoh. Jangan hapus nomor soal (1. 2. 3.) dan huruf opsi (A. B. C.).',
+      '- Kunci: baris "Jawaban: B" atau cetak tebal pada opsi yang benar, atau * di depan opsi.',
+      '- Blok Wacana opsional; berlaku untuk soal-soal di bawahnya sampai wacana berikutnya.',
+      ''
+    ];
+    var pg = [
+      'Wacana',
+      'Tuliskan bacaan/paparan di sini (atau hapus 3 baris ini jika soal mandiri).',
+      '',
+      '1. Tuliskan pertanyaan pilihan ganda di baris ini.',
+      'A. Opsi salah',
+      'B. Opsi benar',
+      'C. Opsi salah',
+      'D. Opsi salah',
+      'Jawaban: B',
+      'Pembahasan: Tuliskan alasan singkat mengapa B benar.',
+      '',
+      '2. Pertanyaan kedua.',
+      'A. Opsi A',
+      'B. Opsi B',
+      'C. Opsi C',
+      'D. Opsi D',
+      'Jawaban: A',
+      'Pembahasan: …'
+    ];
+    var bs = [
+      '1. Tuliskan pernyataan yang dinilai benar atau salah.',
+      'A. Benar',
+      'B. Salah',
+      'Jawaban: A',
+      'Pembahasan: Jelaskan mengapa pernyataan itu benar.',
+      '',
+      '2. Pernyataan kedua.',
+      'A. Benar',
+      'B. Salah',
+      'Jawaban: B',
+      'Pembahasan: …'
+    ];
+    var isian = [
+      '1. Ibu kota negara Indonesia adalah ....',
+      'Jawaban: Jakarta',
+      'Pembahasan: Jakarta adalah ibu kota NKRI.',
+      '',
+      '2. Hasil 7 × 8 = ....',
+      'Jawaban: 56',
+      'Pembahasan: …'
+    ];
+    var essay = [
+      '1. Jelaskan dua alasan mengapa vili pada usus halus mempercepat penyerapan sari makanan.',
+      'Pembahasan: (1) memperluas permukaan; (2) dinding tipis dan kaya kapiler. Dinilai manual.',
+      '',
+      '2. Uraikan dampak pola makan tidak teratur terhadap kesehatan lambung.',
+      'Pembahasan: Poin kunci penilaian…'
+    ];
+    if (jenis === 'pg') return head.concat(['NASKAH PILIHAN GANDA', ''], pg);
+    if (jenis === 'benar_salah') return head.concat(['NASKAH BENAR / SALAH', ''], bs);
+    if (jenis === 'isian') return head.concat(['NASKAH ISIAN SINGKAT', ''], isian);
+    if (jenis === 'essay') return head.concat(['NASKAH ESSAY / URAIAN', ''], essay);
+    return head.concat(
+      ['NASKAH CAMPURAN', ''],
+      ['--- Pilihan ganda ---', ''], pg, [''],
+      ['--- Benar / salah ---', ''], bs, [''],
+      ['--- Isian singkat ---', ''], isian, [''],
+      ['--- Essay ---', ''], essay
+    );
+  }
+
+  var TPL_NAMA = {
+    pg: 'template-soal-pg.docx',
+    benar_salah: 'template-soal-benar-salah.docx',
+    isian: 'template-soal-isian.docx',
+    essay: 'template-soal-essay.docx',
+    campuran: 'template-soal-campuran.docx'
+  };
+
+  function unduhTemplate(jenis) {
+    var lines = templateSoal(jenis || 'campuran');
+    var nama = TPL_NAMA[jenis] || 'template-soal.docx';
+    if (downloadBlob(teksKeDocx(lines), nama)) {
+      toast('Template ' + nama + ' diunduh. Isi, simpan, lalu unggah di sini.', 'ok');
+    }
+    if ($('wordPaste')) $('wordPaste').value = lines.join('\n');
+  }
+
   function clearWordUpload() {
     wordFileObj = null;
     if ($('wordFile')) $('wordFile').value = '';
@@ -1242,187 +1454,6 @@
     qa('#tplGrid [data-tpl]').forEach(function (b) {
       b.addEventListener('click', function () { unduhTemplate(b.getAttribute('data-tpl')); });
     });
-    if ($('btnParseWord')) $('btnParseWord').addEventListener('click', parseWordUpload);
-    if ($('btnClearWord')) $('btnClearWord').addEventListener('click', clearWordUpload);
-    if ($('btnImportWord')) {
-      $('btnImportWord').addEventListener('click', function () {
-        goto(1);
-        setSumberMode('word');
-        toast('Pilih file Word, lalu Konversi Word → Pratinjau.', 'warn');
-      });
-    }
-
-    $('btnGenerate').addEventListener('click', function () { generate(0); });
-    $('btnSample').addEventListener('click', fillSample);
-    $('btnResetSpec').addEventListener('click', resetSpec);
-    $('btnLoadDemo').addEventListener('click', function () {
-      state.questions = demoQuestions(collectSpec());
-      state.meta = { model: 'contoh', provider: 'demo' };
-      renderQuestions();
-      toast('Contoh soal dimuat.', 'ok');
-    });
-    $('btnRegenAll').addEventListener('click', function () { goto(1); toast('Sesuaikan spesifikasi lalu klik Generate.', 'warn'); });
-
-    // panel 2
-    $('btnJsonView').addEventListener('click', function () { showJson($('jsonBox').hidden); });
-    $('btnApplyJson').addEventListener('click', applyJson);
-    $('btnCopyJson').addEventListener('click', copyJson);
-    $('btnDownloadJson').addEventListener('click', downloadJson);
-    $('btnImportJson').addEventListener('click', function () {
-      showJson(true);
-      toast('Tempel JSON di kotak lalu klik "Terapkan JSON ke Pratinjau".', 'warn');
-    });
-    $('btnAddManual').addEventListener('click', addManual);
-
-    // panel 3
-    $('btnBuild').addEventListener('click', buildForm);
-    $('btnSaveKey').addEventListener('click', saveConfig);
-    $('btnTest').addEventListener('click', testConnection);
-    $('btnListModels').addEventListener('click', listModels);
-    $('btnClearKey').addEventListener('click', clearKey);
-    $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
-    $('btnResetCooldown').addEventListener('click', resetCooldown);
-    $('s-provider').addEventListener('change', function () {
-      $('baseUrlField').hidden = this.value !== 'openai';
-      fillModelDatalist(this.value);
-      $('s-model').value = this.value === 'openai' ? 'gpt-4o-mini' : '';
-      $('s-keys').placeholder = this.value === 'openai'
-        ? 'sk-… (satu per baris)'
-        : 'AIzaSy… (satu per baris, boleh banyak)';
-    });
-
-    bindList();
-
-    // simpan spesifikasi ke localStorage (bila diizinkan)
-    var fields = ['f-mapel', 'f-kelas', 'f-topik', 'f-poin', 'f-jumlah'];
-    fields.forEach(function (id) {
-      $(id).addEventListener('change', function () {
-        try { localStorage.setItem('soal-ai-' + id, $(id).value); } catch (e) {}
-      });
-      try {
-        var v = localStorage.getItem('soal-ai-' + id);
-        if (v !== null && v !== '') $(id).value = v;
-      } catch (e) {}
-    });
-  }
-
-  /* ========================== 14. INIT ========================== */
-  function init() {
-    initTheme();
-    bind();
-    updateEstimate();
-    loadConfig();
-    if (state.demo) {
-      $('emptyState').hidden = false;
-    }
-    goto(1);
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-})();
-</script>
- terlambat makan. Gangguan yang paling mungkin terjadi adalah …',
-        options: ['Maag akibat iritasi dinding lambung', 'Diare karena infeksi usus besar', 'Sembelit karena kurang serat', 'Apendisitis karena infeksi usus buntu'],
-        correctIdx: [0], points: p, level: 'C4',
-        explanation: 'Pola makan tidak teratur membuat asam lambung mengiritasi dinding lambung (gastritis/maag).',
-        answerText: ''
-      }
-    ];
-  }
-
-  function fillSample() {
-    $('f-mapel').value = 'IPA';
-    $('f-kelas').value = 'VIII SMP';
-    $('f-kurikulum').value = 'Kurikulum Merdeka';
-    $('f-topik').value = 'Sistem pencernaan manusia: organ, enzim, dan gangguan pencernaan';
-    $('f-cpTp').value = 'Peserta didik dapat menganalisis keterkaitan struktur organ pencernaan dengan fungsinya serta gangguan yang mungkin terjadi.';
-    $('f-indikator').value = '1) Menentukan fungsi enzim pencernaan\n2) Menganalisis hubungan struktur vili dan penyerapan\n3) Mendiagnosis gangguan pencernaan dari gejala';
-    $('f-jumlah').value = 10;
-    $('f-poin').value = 10;
-    $('f-kesulitan').value = 'campuran';
-    $('f-preset').value = 'hots';
-    setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
-    setChips('chips-level', ['C3', 'C4', 'C5']);
-    $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
-    updateEstimate();
-    toast('Contoh spesifikasi dimuat.', 'ok');
-  }
-
-  function resetSpec() {
-    ['f-mapel', 'f-kelas', 'f-topik', 'f-cpTp', 'f-indikator', 'f-materi', 'f-instruksi'].forEach(function (id) { $(id).value = ''; });
-    $('f-jumlah').value = 10; $('f-poin').value = 10;
-    $('f-kesulitan').value = 'sedang'; $('f-preset').value = 'umum'; $('f-bahasa').value = 'id';
-    $('f-temp').value = 0.8; $('out-temp').textContent = '0.8';
-    if ($('f-thinking')) $('f-thinking').value = '';
-    setChips('chips-tipe', ['pg']);
-    setChips('chips-level', ['C3', 'C4']);
-    updateEstimate();
-    toast('Spesifikasi direset.');
-  }
-
-  /* ========================== 12. TEMA ========================== */
-  function initTheme() {
-    var saved = null;
-    try { saved = localStorage.getItem('soal-ai-theme'); } catch (e) {}
-    if (saved) document.documentElement.setAttribute('data-theme', saved);
-    $('btnTheme').addEventListener('click', function () {
-      var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? '' : 'dark';
-      if (cur) document.documentElement.setAttribute('data-theme', 'dark');
-      else document.documentElement.removeAttribute('data-theme');
-      try { localStorage.setItem('soal-ai-theme', cur); } catch (e) {}
-    });
-  }
-
-  /* ========================== 13. BINDING ========================== */
-  function bind() {
-    // navigasi
-    qa('[data-goto]').forEach(function (b) {
-      b.addEventListener('click', function () { goto(b.getAttribute('data-goto')); });
-    });
-
-    // stepper jumlah
-    qa('[data-step]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var el = $(b.getAttribute('data-step'));
-        var min = Number(el.min || 1), max = Number(el.max || 50);
-        el.value = Math.max(min, Math.min(max, (Number(el.value) || min) + Number(b.getAttribute('data-delta'))));
-        updateEstimate();
-      });
-    });
-
-    $('f-jumlah').addEventListener('input', updateEstimate);
-    $('f-poin').addEventListener('input', updateEstimate);
-    qa('#chips-tipe input').forEach(function (c) { c.addEventListener('change', updateEstimate); });
-    $('f-temp').addEventListener('input', function () { $('out-temp').textContent = this.value; });
-
-    qa('#modeTabs [data-src]').forEach(function (b) {
-      b.addEventListener('click', function () { setSumberMode(b.getAttribute('data-src')); });
-    });
-    var drop = $('wordDrop');
-    var fileEl = $('wordFile');
-    if (drop && fileEl) {
-      drop.addEventListener('click', function (e) {
-        if (e.target && e.target.id === 'wordFile') return;
-        fileEl.click();
-      });
-      drop.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileEl.click(); }
-      });
-      ['dragenter', 'dragover'].forEach(function (ev) {
-        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('is-drag'); });
-      });
-      ['dragleave', 'drop'].forEach(function (ev) {
-        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('is-drag'); });
-      });
-      drop.addEventListener('drop', function (e) {
-        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f) setWordFile(f);
-      });
-      fileEl.addEventListener('change', function () {
-        if (fileEl.files && fileEl.files[0]) setWordFile(fileEl.files[0]);
-      });
-    }
     if ($('btnParseWord')) $('btnParseWord').addEventListener('click', parseWordUpload);
     if ($('btnClearWord')) $('btnClearWord').addEventListener('click', clearWordUpload);
     if ($('btnImportWord')) {
