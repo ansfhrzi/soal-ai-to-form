@@ -173,7 +173,20 @@ var WordParser = (function () {
   }
 
   function isSkip_(line) {
-    return /^\s*(nama|kelas|sekolah|mata\s*pelajaran|mapel|waktu|hari\/?tanggal|petunjuk(\s+pengerjaan)?|lembar\s+soal|ujia?n|penilaian|pts|pas|uts|uas)\b/i.test(line);
+    return /^\s*(nama|kelas|sekolah|mata\s*pelajaran|mapel|waktu|hari\/?tanggal|petunjuk(\s+pengerjaan|\s+pengisian)?|lembar\s+soal|ujia?n|penilaian|pts|pas|uts|uas|naskah\b)\b/i.test(line) ||
+      /^\s*---/.test(line);
+  }
+
+  function parseRentangWacana_(line) {
+    var m = String(line || '').match(/soal(?:\s+nomor)?\s+(\d{1,3})\s*(?:[-–—]|s\.?d\.?|sampai|hingga)\s*(\d{1,3})/i);
+    if (!m) m = String(line || '').match(/untuk\s+no\.?\s*(\d{1,3})\s*[-–—]\s*(\d{1,3})/i);
+    if (!m) return null;
+    var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+    return { dari: Math.min(a, b), sampai: Math.max(a, b) };
+  }
+
+  function merujukWacana_(text) {
+    return /berdasarkan\s+(wacana|teks|bacaan|cuplikan|paparan)|(?:wacana|teks|bacaan|kutipan|paparan)\s+di\s+atas/i.test(text || '');
   }
 
   function matchSoal_(line) {
@@ -291,6 +304,8 @@ var WordParser = (function () {
     var questions = [];
     var current = null;
     var wacana = '';
+    var wacanaDari = 0;
+    var wacanaSampai = 0;
     var mode = 'body';
     var kunciMap = {};
 
@@ -319,13 +334,35 @@ var WordParser = (function () {
         flush();
         var sisa = line.replace(/^\s*(wacana|bacaan|stimulus|paparan|teks|cerita|passage)[^:]*[:.\-]?\s*/i, '').trim();
         wacana = sisa;
+        var rg = parseRentangWacana_(line);
+        if (rg) {
+          wacanaDari = rg.dari;
+          wacanaSampai = rg.sampai;
+        } else {
+          wacanaDari = 0;
+          wacanaSampai = 0;
+        }
         continue;
       }
 
       var qs = matchSoal_(line);
       if (qs) {
         flush();
-        current = soalBaru_(qs.n, qs.text, wacana, poin);
+        var pakaiWacana = '';
+        if (wacana) {
+          if (wacanaSampai > 0) {
+            if (qs.n >= wacanaDari && qs.n <= wacanaSampai) pakaiWacana = wacana;
+          } else {
+            pakaiWacana = wacana;
+            wacana = '';
+            wacanaDari = 0;
+            wacanaSampai = 0;
+          }
+        }
+        if (!pakaiWacana && merujukWacana_(qs.text) && questions.length) {
+          pakaiWacana = questions[questions.length - 1].stimulus || '';
+        }
+        current = soalBaru_(qs.n, qs.text, pakaiWacana, poin);
         var satu = pecahOpsiSatuBaris_(qs.text);
         if (satu) {
           current.text = qs.text.replace(/\s+[A-Ea-e][\.\)]\s+[\s\S]*$/, '').trim() || current.text;
