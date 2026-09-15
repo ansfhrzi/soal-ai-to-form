@@ -228,8 +228,9 @@
     }
 
     if (!state.config.hasKey) {
-      toast('API key belum disimpan. Buka tab Pengaturan dulu.', 'err');
+      toast('API key belum disimpan. Buka Pengaturan AI dulu.', 'err');
       goto(3);
+      setAiSettingsVisible(true);
       return;
     }
 
@@ -1108,8 +1109,7 @@
       paintConfig();
       $('ver').textContent = cfg.version || '1.0';
       if (cfg.userEmail) $('userEmail').textContent = cfg.userEmail;
-      if (!cfg.hasKey) toast('Langkah 1: tempel API key Gemini di tab Pengaturan (boleh banyak, satu per baris).', 'warn');
-      else if (cfg.keyBermasalah) toast(cfg.keyBermasalah + ' key sedang bermasalah — lihat panel Status API Key.', 'warn');
+      /* Pengaturan AI disembunyikan — jangan paksa toast key. */
     }, function (err) {
       toast('Gagal memuat konfigurasi: ' + errText(err), 'err');
     });
@@ -1487,6 +1487,8 @@
     $('btnAddManual').addEventListener('click', addManual);
 
     // panel 3
+    if ($('btnShowAi')) $('btnShowAi').addEventListener('click', function () { setAiSettingsVisible(true); });
+    if ($('btnHideAi')) $('btnHideAi').addEventListener('click', function () { setAiSettingsVisible(false); });
     $('btnBuild').addEventListener('click', buildForm);
     $('btnSaveKey').addEventListener('click', saveConfig);
     $('btnTest').addEventListener('click', testConnection);
