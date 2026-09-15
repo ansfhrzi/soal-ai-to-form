@@ -232,6 +232,49 @@ var FormBuilder = (function () {
     });
   }
 
+  /**
+   * Menulis opsi + kunci kuis. setChoiceValues hanya teks; kunci butuh
+   * createChoice(teks, benar) lalu setChoices.
+   */
+  function setOpsiKunci_(item, pairs, dilewati, label) {
+    var choices = [];
+    var i;
+    for (i = 0; i < pairs.length; i++) {
+      var teks = String(pairs[i].text || '');
+      var benar = !!pairs[i].correct;
+      try {
+        choices.push(item.createChoice(teks, benar));
+      } catch (e1) {
+        try { choices.push(item.createChoice(teks)); } catch (e2) {}
+      }
+    }
+    if (choices.length) {
+      try {
+        item.setChoices(choices);
+        return true;
+      } catch (e3) {
+        if (dilewati) dilewati.push('kunci ' + label);
+      }
+    }
+    try {
+      item.setChoiceValues(pairs.map(function (p) { return p.text; }));
+    } catch (e4) {}
+    return false;
+  }
+
+  function setUmpan_(item, teksBenar, teksSalah) {
+    try {
+      if (item && item.setFeedbackForCorrect) {
+        item.setFeedbackForCorrect(FormApp.createFeedback().setText(teksBenar).build());
+      }
+    } catch (eC) {}
+    try {
+      if (item && item.setFeedbackForIncorrect) {
+        item.setFeedbackForIncorrect(FormApp.createFeedback().setText(teksSalah).build());
+      }
+    } catch (eW) {}
+  }
+
   /* ====================== PENAMBAHAN ITEM KE FORM ====================== */
 
   /**
@@ -267,43 +310,47 @@ var FormBuilder = (function () {
         });
         if (opts.acakOpsi) pairs = shuffle_(pairs);
 
-        var values = pairs.map(function (p) { return p.text; });
+        /* PG/dropdown: tepat satu kunci. PG kompleks: boleh banyak. */
+        if (q.type !== 'pg_kompleks') {
+          var adaKunci = false;
+          pairs = pairs.map(function (p) {
+            if (p.correct && !adaKunci) { adaKunci = true; return p; }
+            return { text: p.text, correct: false };
+          });
+          if (!adaKunci && pairs.length) pairs[0].correct = true;
+        }
+
         var correctTexts = pairs.filter(function (p) { return p.correct; }).map(function (p) { return p.text; });
         jawabanBenar = correctTexts.join(' | ');
 
         if (q.type === 'pg') {
           item = form.addMultipleChoiceItem();
-          item.setChoiceValues(values);
-          item.setFeedbackForCorrect(
-            FormApp.createFeedback().setText(feedbackText_(q, correctTexts[0] || '')).build());
-          item.setFeedbackForIncorrect(
-            FormApp.createFeedback().setText(feedbackWrongText_(q, correctTexts[0] || '')).build());
         } else if (q.type === 'pg_kompleks') {
           item = form.addCheckboxItem();
-          item.setChoiceValues(values);
-          item.setHelpText('Pilih ' + correctTexts.length + ' jawaban yang benar.');
-          item.setFeedbackForCorrect(
-            FormApp.createFeedback().setText(feedbackText_(q, correctTexts.join(', '))).build());
-          item.setFeedbackForIncorrect(
-            FormApp.createFeedback().setText(feedbackWrongText_(q, correctTexts.join(', '))).build());
+          try { item.setHelpText('Pilih ' + correctTexts.length + ' jawaban yang benar.'); } catch (eH1) {}
         } else {
           item = form.addListItem();
-          item.setChoiceValues(values);
-          item.setFeedbackForCorrect(
-            FormApp.createFeedback().setText(feedbackText_(q, correctTexts[0] || '')).build());
-          item.setFeedbackForIncorrect(
-            FormApp.createFeedback().setText(feedbackWrongText_(q, correctTexts[0] || '')).build());
         }
+        if (opts.isQuiz && item.setPoints) {
+          try { item.setPoints(q.points); } catch (eP0) {}
+        }
+        setOpsiKunci_(item, pairs, dilewati, 'soal ' + q.n);
+        setUmpan_(item, feedbackText_(q, correctTexts.join(', ')),
+          feedbackWrongText_(q, correctTexts.join(', ')));
       } else if (q.type === 'isian') {
         item = form.addTextItem();
         var kunci = String(q.answerText || (q.options[q.correct[0]] || q.options[0] || '') || '').trim();
         jawabanBenar = kunci;
-        if (kunci && opts.pakaiValidasiIsian !== false) {
-          var v = FormApp.createTextValidation().requireTextEqualTo(kunci);
-          item.setValidation(v.setHelpText('Jawaban harus tepat: ' + kunci).build());
+        if (opts.isQuiz && item.setPoints) {
+          try { item.setPoints(q.points); } catch (eP1) {}
         }
-        item.setFeedbackForCorrect(
-          FormApp.createFeedback().setText(feedbackText_(q, kunci)).build());
+        if (kunci && opts.pakaiValidasiIsian !== false) {
+          try {
+            var v = FormApp.createTextValidation().requireTextEqualTo(kunci);
+            item.setValidation(v.setHelpText('Jawaban harus tepat: ' + kunci).build());
+          } catch (eV) {}
+        }
+        setUmpan_(item, feedbackText_(q, kunci), feedbackWrongText_(q, kunci));
       } else {
         item = form.addParagraphTextItem();
         item.setRows(5);
@@ -511,7 +558,7 @@ var FormBuilder = (function () {
       } catch (eSet) {}
     }
     if (opts.isQuiz) {
-      cobaSet_('setIsQuiz', true);
+      try { form.setIsQuiz(true); } catch (eQuiz) { cobaSet_('setIsQuiz', true); }
       cobaSet_('setShowLinkToRespondAgain', false);
     }
     /* FormApp tidak punya setShuffleQuestionOrder. Default form = tidak acak
