@@ -1090,6 +1090,18 @@
     box.hidden = false;
   }
 
+  function setAiSettingsVisible(show) {
+    var card = $('aiSettingsCard');
+    var formCard = $('formSettingsCard');
+    if (card) card.hidden = !show;
+    if (formCard) {
+      formCard.classList.toggle('span-12', !show);
+      formCard.classList.toggle('span-7', !!show);
+    }
+    if ($('btnShowAi')) $('btnShowAi').hidden = !!show;
+    if (show && card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
   /* ========================== 10. PENGATURAN AI ========================== */
   function loadConfig() {
     if (state.demo) {
