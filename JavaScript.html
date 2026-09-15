@@ -608,6 +608,131 @@
     }
   }
 
+  /* ========================== 8b. UNGGAH WORD ========================== */
+  var wordFileObj = null;
+
+  function setSumberMode(src) {
+    src = src === 'word' ? 'word' : 'ai';
+    qa('#modeTabs [data-src]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-src') === src);
+    });
+    if ($('mode-ai')) $('mode-ai').hidden = src !== 'ai';
+    if ($('mode-word')) $('mode-word').hidden = src !== 'word';
+  }
+
+  function setWordFile(file) {
+    if (!file) return;
+    var name = String(file.name || '');
+    if (/\.doc$/i.test(name) && !/\.docx$/i.test(name)) {
+      toast('File .doc lama tidak didukung. Simpan sebagai .docx di Word, lalu unggah lagi.', 'err');
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      toast('File terlalu besar (maks 6 MB).', 'err');
+      return;
+    }
+    wordFileObj = file;
+    if ($('wordFileName')) $('wordFileName').textContent = name + ' · ' + Math.max(1, Math.round(file.size / 1024)) + ' KB';
+    if ($('w-title') && !$('w-title').value.trim()) {
+      $('w-title').value = name.replace(/\.(docx|txt|md)$/i, '').replace(/[_-]+/g, ' ');
+    }
+  }
+
+  function clearWordUpload() {
+    wordFileObj = null;
+    if ($('wordFile')) $('wordFile').value = '';
+    if ($('wordPaste')) $('wordPaste').value = '';
+    if ($('wordFileName')) $('wordFileName').textContent = 'Lepas file .docx di sini, atau klik untuk memilih';
+    toast('File Word dihapus.');
+  }
+
+  function fileToBase64(file, onOk, onErr) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var bytes = new Uint8Array(reader.result);
+        var binary = '';
+        var chunk = 0x8000;
+        var i;
+        for (i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+        }
+        onOk(btoa(binary));
+      } catch (e) { onErr(e); }
+    };
+    reader.onerror = function () { onErr(new Error('Gagal membaca file.')); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function utf8ToB64(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+
+  function applyWordResult(res, sumber) {
+    var arr = (res && res.questions) || [];
+    if (!arr.length) { toast('Tidak ada soal terdeteksi di naskah.', 'err'); return; }
+    state.questions = arr.map(function (q, i) { return gabungTeksSoal(normalizeQ(q, i), ''); });
+    state.meta = res.meta || { model: 'word', provider: 'upload' };
+    if ($('w-title') && $('w-title').value.trim()) state.meta.judul = $('w-title').value.trim();
+    if (!$('g-title').value.trim()) $('g-title').value = state.meta.judul || sumber || 'Soal dari Word';
+    renderQuestions();
+    toast(state.questions.length + ' soal dari Word siap ditinjau.', 'ok');
+    goto(2);
+  }
+
+  function parseWordUpload() {
+    var paste = $('wordPaste') ? $('wordPaste').value.trim() : '';
+    var poin = Number(($('w-poin') && $('w-poin').value) || $('f-poin').value || 10) || 10;
+    if (state.questions.length && !confirm('Ganti ' + state.questions.length + ' soal yang sudah ada dengan hasil Word?')) return;
+
+    if (state.demo) {
+      if (paste) {
+        toast('Mode demo: parser Word hanya jalan setelah deploy. Memuat contoh soal.', 'warn');
+      }
+      state.questions = demoQuestions(collectSpec());
+      state.meta = { model: 'word-demo', provider: 'demo', judul: ($('w-title') && $('w-title').value) || 'Soal dari Word (demo)' };
+      if (!$('g-title').value.trim()) $('g-title').value = state.meta.judul;
+      renderQuestions();
+      toast('Mode demo: contoh soal dimuat. Deploy Apps Script untuk membaca .docx sungguhan.', 'warn');
+      goto(2);
+      return;
+    }
+
+    function kirim(payload) {
+      showOverlay('Membaca naskah Word…', 'Memilah soal, opsi, wacana, dan kunci jawaban.');
+      if ($('btnParseWord')) $('btnParseWord').disabled = true;
+      srv('parseWordSoal').run(payload, function (res) {
+        if ($('btnParseWord')) $('btnParseWord').disabled = false;
+        hideOverlay();
+        if (!res || !res.ok) {
+          toast('Gagal: ' + errText(res || 'tidak ada hasil'), 'err');
+          return;
+        }
+        applyWordResult(res, payload.filename);
+      }, function (err) {
+        if ($('btnParseWord')) $('btnParseWord').disabled = false;
+        hideOverlay();
+        toast('Error: ' + errText(err), 'err');
+      });
+    }
+
+    if (wordFileObj) {
+      fileToBase64(wordFileObj, function (b64) {
+        kirim({
+          base64: b64,
+          filename: wordFileObj.name,
+          poin: poin
+        });
+      }, function (err) { toast('Gagal membaca file: ' + errText(err), 'err'); });
+      return;
+    }
+    if (paste) {
+      kirim({ text: paste, filename: 'tempel.txt', poin: poin, base64: utf8ToB64(paste) });
+      return;
+    }
+    toast('Pilih file .docx atau tempel teks soal dulu.', 'err');
+  }
+
   /* ========================== 9. BUILD FORM ========================== */
   function collectFormOptions() {
     var spec = collectSpec();
@@ -1086,6 +1211,43 @@
     $('f-poin').addEventListener('input', updateEstimate);
     qa('#chips-tipe input').forEach(function (c) { c.addEventListener('change', updateEstimate); });
     $('f-temp').addEventListener('input', function () { $('out-temp').textContent = this.value; });
+
+    qa('#modeTabs [data-src]').forEach(function (b) {
+      b.addEventListener('click', function () { setSumberMode(b.getAttribute('data-src')); });
+    });
+    var drop = $('wordDrop');
+    var fileEl = $('wordFile');
+    if (drop && fileEl) {
+      drop.addEventListener('click', function (e) {
+        if (e.target && e.target.id === 'wordFile') return;
+        fileEl.click();
+      });
+      drop.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileEl.click(); }
+      });
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('is-drag'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('is-drag'); });
+      });
+      drop.addEventListener('drop', function (e) {
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) setWordFile(f);
+      });
+      fileEl.addEventListener('change', function () {
+        if (fileEl.files && fileEl.files[0]) setWordFile(fileEl.files[0]);
+      });
+    }
+    if ($('btnParseWord')) $('btnParseWord').addEventListener('click', parseWordUpload);
+    if ($('btnClearWord')) $('btnClearWord').addEventListener('click', clearWordUpload);
+    if ($('btnImportWord')) {
+      $('btnImportWord').addEventListener('click', function () {
+        goto(1);
+        setSumberMode('word');
+        toast('Pilih file Word, lalu Konversi Word → Pratinjau.', 'warn');
+      });
+    }
 
     $('btnGenerate').addEventListener('click', function () { generate(0); });
     $('btnSample').addEventListener('click', fillSample);

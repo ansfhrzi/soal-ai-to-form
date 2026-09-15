@@ -66,9 +66,15 @@
 
           <div class="card span-8">
             <h2 class="card-title">
-              <span class="dot"></span> Spesifikasi Soal
+              <span class="dot"></span> Sumber Soal
             </h2>
 
+            <div class="mode-tabs" id="modeTabs">
+              <button type="button" class="mode-tab is-active" data-src="ai">Buat dengan AI</button>
+              <button type="button" class="mode-tab" data-src="word">Unggah Word</button>
+            </div>
+
+            <div id="mode-ai">
             <div class="row-3">
               <label class="field">
                 <span>Mata pelajaran</span>
@@ -268,15 +274,43 @@
               </button>
               <button class="btn ghost" id="btnResetSpec" type="button">Reset</button>
             </div>
+            </div>
+
+            <div id="mode-word" hidden>
+              <p class="hint" style="margin:0 0 12px">Unggah naskah soal Microsoft Word (<b>.docx</b>). Soal, opsi, wacana, dan kunci (cetak tebal / bintang / daftar kunci) dibaca lalu bisa diedit di Pratinjau sebelum jadi Google Form.</p>
+              <div class="dropzone" id="wordDrop" tabindex="0">
+                <input type="file" id="wordFile" accept=".docx,.txt,.md,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden>
+                <strong id="wordFileName">Lepas file .docx di sini, atau klik untuk memilih</strong>
+                <small class="hint">Maks 6 MB · Word 2007+ (.docx). File .doc lama: Simpan sebagai .docx dulu.</small>
+              </div>
+              <label class="field" style="margin-top:14px">
+                <span>Atau tempel teks soal <small class="hint">(opsional)</small></span>
+                <textarea id="wordPaste" rows="6" placeholder="1. Pertanyaan…&#10;A. opsi&#10;B. opsi&#10;Jawaban: A"></textarea>
+              </label>
+              <div class="row-2">
+                <label class="field">
+                  <span>Poin per soal</span>
+                  <input id="w-poin" type="number" min="1" max="100" value="10">
+                </label>
+                <label class="field">
+                  <span>Judul form <small class="hint">(opsional)</small></span>
+                  <input id="w-title" placeholder="Otomatis dari nama file">
+                </label>
+              </div>
+              <div class="actions">
+                <button class="btn primary big" id="btnParseWord" type="button">Konversi Word → Pratinjau</button>
+                <button class="btn ghost" id="btnClearWord" type="button">Hapus file</button>
+              </div>
+            </div>
           </div>
 
           <aside class="card span-4">
             <h2 class="card-title"><span class="dot alt"></span> Cara Kerja</h2>
             <ol class="howto">
-              <li>Simpan <b>API key</b> di tab <b>Pengaturan</b> (sekali saja).</li>
-              <li>Isi spesifikasi, klik <b>Generate</b> — AI mengembalikan JSON soal.</li>
+              <li>Simpan <b>API key</b> di tab <b>Pengaturan</b> (hanya untuk mode AI).</li>
+              <li><b>Buat dengan AI</b> atau <b>Unggah Word</b> (.docx naskah soal).</li>
               <li><b>Pratinjau &amp; edit</b> tiap soal, kunci jawaban, dan pembahasan.</li>
-              <li>Klik <b>Buat Google Form</b> → form mode Kuis + spreadsheet kunci jawaban jadi otomatis.</li>
+              <li>Klik <b>Buat Google Form</b> → form mode Kuis + spreadsheet kunci.</li>
             </ol>
 
             <div class="info-box">
@@ -305,6 +339,7 @@
             <div class="toolbar">
               <button class="btn small" id="btnJsonView" type="button">{ } Lihat JSON</button>
               <button class="btn small" id="btnImportJson" type="button">Impor JSON</button>
+              <button class="btn small" id="btnImportWord" type="button">Unggah Word</button>
               <button class="btn small" id="btnAddManual" type="button">+ Tambah Soal</button>
               <button class="btn small ghost" id="btnRegenAll" type="button">↻ Generate Ulang Semua</button>
             </div>
@@ -327,7 +362,7 @@
               <path d="M6 3h9l4 4v14H6z" />
               <path d="M14 3v5h5M9 13h7M9 17h5" />
             </svg>
-            <p>Belum ada soal. Kembali ke tab <b>Generate</b> lalu klik <b>Generate Soal dengan AI</b>.</p>
+            <p>Belum ada soal. Kembali ke tab <b>Generate</b>: buat dengan AI atau unggah file Word.</p>
             <button class="btn ghost" id="btnLoadDemo" type="button">Muat Contoh Soal (demo)</button>
           </div>
 
@@ -488,7 +523,7 @@
     </main>
 
     <footer class="footer">
-      <span>Soal AI ➜ Google Form · v<span id="ver">1.0.15</span></span>
+      <span>Soal AI ➜ Google Form · v<span id="ver">1.0.16</span></span>
       <span id="userEmail"></span>
     </footer>
   </div>

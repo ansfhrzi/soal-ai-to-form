@@ -24,7 +24,7 @@
  */
 
 /** Versi aplikasi — dipakai untuk cache-busting & info di UI. */
-var APP_VERSION = '1.0.15';
+var APP_VERSION = '1.0.16';
 
 /* ============================ ENTRY POINT WEB APP ======================== */
 
@@ -268,6 +268,21 @@ function listGeminiModels() {
  * @param {Object} spec Konfigurasi soal (lihat AiService.buildPrompt_).
  * @return {Object} {ok, questions, meta} atau {ok:false, error}
  */
+/**
+ * Unggah naskah Word (.docx) atau teks soal → daftar soal untuk pratinjau.
+ * @param {Object} payload {base64, filename, text, poin}
+ */
+function parseWordSoal(payload) {
+  try {
+    var result = WordParser.parse(payload || {});
+    log_('parseWordSoal', { jumlah: (result.questions || []).length, sumber: (result.meta || {}).sumber });
+    return result;
+  } catch (err) {
+    log_('parseWordSoal:ERROR', { message: err.message });
+    return { ok: false, error: errMsg_(err) };
+  }
+}
+
 function generateQuestions(spec) {
   try {
     validateSpec_(spec);
