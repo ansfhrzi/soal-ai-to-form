@@ -199,6 +199,39 @@ var FormBuilder = (function () {
     };
   }
 
+  /**
+   * Isian biodata di awal form: Nama, Kelas, No. Absen.
+   * Bukan soal kuis (poin 0) tetapi wajib diisi.
+   */
+  function addBiodata_(form, opts, dilewati) {
+    try {
+      var h = form.addSectionHeaderItem();
+      h.setTitle('Biodata siswa');
+      try { h.setHelpText('Isi data diri sebelum mengerjakan soal.'); } catch (e0) {}
+    } catch (eH) {
+      if (dilewati) dilewati.push('header biodata');
+    }
+
+    var fields = [
+      { title: 'Nama', help: 'Nama lengkap' },
+      { title: 'Kelas', help: 'Contoh: VIII A' },
+      { title: 'No. Absen', help: 'Nomor urut absen' }
+    ];
+    fields.forEach(function (f) {
+      try {
+        var item = form.addTextItem();
+        item.setTitle(f.title);
+        try { item.setHelpText(f.help); } catch (e1) {}
+        try { item.setRequired(true); } catch (e2) {}
+        if (opts && opts.isQuiz && item.setPoints) {
+          try { item.setPoints(0); } catch (e3) {}
+        }
+      } catch (eF) {
+        if (dilewati) dilewati.push('isian ' + f.title);
+      }
+    });
+  }
+
   /* ====================== PENAMBAHAN ITEM KE FORM ====================== */
 
   /**
@@ -498,8 +531,13 @@ var FormBuilder = (function () {
         .setHelpText(desc.substring(0, 300));
     }
 
-    // ---------- Tambahkan soal ----------
+    // ---------- Biodata siswa (Nama, Kelas, No. Absen) ----------
     var dilewati = [];
+    if (o.biodata !== false) {
+      addBiodata_(form, opts, dilewati);
+    }
+
+    // ---------- Tambahkan soal ----------
     addItems_(form, questions, opts, dilewati);
 
     try {

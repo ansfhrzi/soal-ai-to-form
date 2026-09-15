@@ -627,6 +627,7 @@
         description: $('g-desc').value.trim(),
         folderId: $('g-folder').value.trim(),
         targetFormId: $('g-target').value.trim(),
+        biodata: $('g-biodata') ? $('g-biodata').checked : true,
         isQuiz: $('g-isQuiz').checked,
         buatKunci: $('g-buatKunci').checked,
         acakSoal: $('g-acakSoal').checked && !state.questions.some(function (qq) {
