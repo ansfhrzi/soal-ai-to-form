@@ -397,7 +397,7 @@ var FormBuilder = (function () {
         setUmpan_(item, feedbackText_(q, kunci), feedbackWrongText_(q, kunci));
       } else {
         item = form.addParagraphTextItem();
-        item.setRows(5);
+        try { if (item && item.setRows) item.setRows(5); } catch (eR) {}
         jawabanBenar = q.explanation || q.options.join(' ') || '(dinilai manual)';
         item.setGeneralFeedback(
           FormApp.createFeedback().setText(
