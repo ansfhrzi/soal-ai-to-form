@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pengaturan AI · Soal AI</title>
+  <?!= include('Stylesheet'); ?>
+</head>
+
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z" />
+            <path d="M18 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1z" />
+          </svg>
+        </span>
+        <span class="brand-text">
+          <strong>Pengaturan AI</strong>
+          <em>Koneksi Gemini / OpenAI</em>
+        </span>
+      </div>
+      <div class="topbar-side">
+        <a class="btn small ghost" href="<?= homeUrl || '?' ?>" target="_top">← Kembali ke aplikasi</a>
+      </div>
+    </header>
+
+    <div class="banner" id="demoBanner" hidden>
+      <strong>Mode Pratinjau (demo).</strong>
+      Halaman ini dibuka di luar Google Apps Script. Deploy web app agar key tersimpan.
+    </div>
+
+    <main class="main">
+      <div class="grid">
+        <div class="card span-7">
+          <h2 class="card-title"><span class="dot"></span> Koneksi AI</h2>
+
+          <label class="field">
+            <span>Provider</span>
+            <select id="s-provider">
+              <option value="gemini" selected>Google Gemini (gratis, disarankan)</option>
+              <option value="openai">OpenAI / kompatibel (base URL bisa diubah)</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>API Key <b class="req">*</b> <small class="hint">satu key per baris — boleh banyak</small></span>
+            <textarea id="s-keys" rows="4" spellcheck="false"
+              placeholder="AIzaSy… (baris 1)&#10;AIzaSy… (baris 2)&#10;AIzaSy… (baris 3)"></textarea>
+            <small class="hint" id="keyStatus">Belum ada key terpasang.</small>
+            <small class="hint">
+              Kuota gratis Gemini dihitung per <b>project × model</b>. Memasang beberapa key
+              (maks 20) membuat aplikasi bisa <b>merotasi otomatis</b> saat satu key kehabisan kuota.
+            </small>
+          </label>
+
+          <label class="field">
+            <span>Model</span>
+            <div class="input-group">
+              <input id="s-model" list="dl-models" placeholder="auto">
+              <button class="btn small ghost" id="btnListModels" type="button" title="Ambil daftar model">⟳</button>
+            </div>
+            <datalist id="dl-models"></datalist>
+            <small class="hint">
+              Kosongkan / ketik <b>auto</b> untuk rotasi model otomatis.
+            </small>
+          </label>
+
+          <label class="field" id="baseUrlField" hidden>
+            <span>Base URL kustom</span>
+            <input id="s-baseurl" placeholder="https://api.openai.com/v1">
+          </label>
+
+          <div class="field">
+            <span>Status API Key</span>
+            <div id="keyStatusBox" class="key-status">
+              <p class="hint">Klik <b>Muat Status</b> untuk melihat kondisi key &amp; model.</p>
+            </div>
+            <div class="actions" style="margin-top:8px">
+              <button class="btn small ghost" id="btnRefreshStatus" type="button">Muat Status</button>
+              <button class="btn small ghost" id="btnResetCooldown" type="button">Reset Cooldown</button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" id="btnSaveKey" type="button">Simpan Pengaturan</button>
+            <button class="btn ghost" id="btnTest" type="button">Tes Koneksi</button>
+            <button class="btn danger ghost" id="btnClearKey" type="button">Hapus Key</button>
+          </div>
+
+          <div id="testResult" class="result small" hidden></div>
+        </div>
+
+        <aside class="card span-5">
+          <h2 class="card-title"><span class="dot alt"></span> Catatan</h2>
+          <div class="info-box">
+            <strong>Ambil API key Gemini</strong>
+            <p>
+              Buka <b>aistudio.google.com/apikey</b> → <i>Create API key</i> → salin.
+              Gratis. Beberapa proyek = beberapa key = kuota berlipat.
+            </p>
+          </div>
+          <div class="info-box">
+            <strong>Keamanan</strong>
+            <p>Key disimpan di <b>Script Properties</b> (<code>GEMINI_KEYS</code>) dan tidak dikirim utuh ke browser.
+              Panel hanya menampilkan <b>4 digit terakhir</b>.</p>
+          </div>
+          <div class="info-box warn">
+            <strong>Batas waktu</strong>
+            <p id="infoBatas">Rotasi berhenti setelah ±240 detik agar tidak menabrak batas 6 menit Apps Script.</p>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>Soal AI ➜ Google Form · v<span id="ver">1.0.21</span> · Pengaturan AI</span>
+      <span id="userEmail"></span>
+    </footer>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script>
+  (function () {
+    'use strict';
+    var GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? google.script.run : null;
+    var DEMO_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
+      'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+    var state = { demo: !GAS, config: { provider: 'gemini', hasKey: false, keys: [], defaultModels: { gemini: DEMO_MODELS, openai: ['gpt-4o-mini', 'gpt-4o'] } } };
+    var $ = function (id) { return document.getElementById(id); };
+
+    function srv(fn) {
+      return {
+        run: function () {
+          var args = Array.prototype.slice.call(arguments);
+          var onErr = args.pop();
+          var onOk = args.pop();
+          if (typeof onOk !== 'function') { args.push(onOk); onOk = onErr; onErr = function () {}; }
+          if (!GAS) { if (typeof onErr === 'function') onErr(new Error('DEMO')); return; }
+          GAS.withSuccessHandler(onOk).withFailureHandler(onErr)[fn].apply(null, args);
+        }
+      };
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function errText(x) {
+      if (x == null) return 'tidak ada pesan error';
+      if (typeof x === 'string') return x;
+      return String(x.message || x.error || x);
+    }
+    function toast(msg, kind) {
+      var box = $('toasts');
+      var el = document.createElement('div');
+      el.className = 'toast ' + (kind || '');
+      el.textContent = msg;
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 4200);
+    }
+    function showResult(box, ok, msg) {
+      if (!box) return;
+      box.className = 'result small' + (ok ? '' : ' error');
+      box.innerHTML = '<div class="meta">' + esc(msg) + '</div>';
+      box.hidden = false;
+    }
+
+    function paintKeyStatus(c) {
+      var box = $('keyStatusBox');
+      if (!box) return;
+      var keys = c.keys || [];
+      if (!keys.length) {
+        box.innerHTML = '<p class="ks-empty">Belum ada API key terpasang.</p>';
+        return;
+      }
+      var head = '<div class="ks-head">' +
+        '<span class="pill">' + keys.length + ' key</span>' +
+        '<span class="pill">' + (c.keySiap || 0) + ' siap</span></div>';
+      var rows = keys.map(function (k) {
+        return '<div class="ks-item"><span class="ks-label">' + esc(k.label) + '</span>' +
+          '<span class="ks-tail">…' + esc(k.ekor) + '</span>' +
+          '<span class="ks-badge ' + esc(k.status) + '">' + esc(k.status) + '</span></div>';
+      }).join('');
+      box.innerHTML = head + rows;
+    }
+    function fillModelDatalist(provider) {
+      var c = state.config;
+      var list = provider === 'openai'
+        ? ((c.defaultModels && c.defaultModels.openai) || ['gpt-4o-mini'])
+        : (c.modelRotasi && c.modelRotasi.length ? c.modelRotasi : DEMO_MODELS);
+      $('dl-models').innerHTML = ['auto'].concat(list).map(function (m) {
+        return '<option value="' + esc(m) + '">';
+      }).join('');
+    }
+    function paintConfig() {
+      var c = state.config;
+      $('s-provider').value = c.provider || 'gemini';
+      $('s-model').value = c.autoRotate ? '' : (c.model || '');
+      $('s-baseurl').value = c.baseUrl || '';
+      $('baseUrlField').hidden = (c.provider !== 'openai');
+      $('keyStatus').textContent = c.hasKey
+        ? c.jmlKey + ' key terpasang · ' + (c.keySiap || 0) + ' siap'
+        : 'Belum ada key terpasang.';
+      if (c.version) $('ver').textContent = c.version;
+      if (c.userEmail) $('userEmail').textContent = c.userEmail;
+      if (c.batasDetik && $('infoBatas')) {
+        $('infoBatas').textContent = 'Rotasi berhenti setelah ±' + c.batasDetik +
+          ' detik agar tidak menabrak batas 6 menit Apps Script.';
+      }
+      paintKeyStatus(c);
+      fillModelDatalist(c.provider);
+    }
+    function loadConfig() {
+      if (state.demo) {
+        $('demoBanner').hidden = false;
+        $('ver').textContent = 'demo';
+        paintConfig();
+        return;
+      }
+      srv('getAiConfig').run(function (cfg) {
+        state.config = cfg || state.config;
+        paintConfig();
+      }, function (err) { toast('Gagal memuat: ' + errText(err), 'err'); });
+    }
+    function collectKeys() {
+      return $('s-keys').value.split(/[\n,;]+/).map(function (k) { return k.trim(); })
+        .filter(function (k) { return k.length && k.indexOf('*') === -1; });
+    }
+    function saveConfig() {
+      var keys = collectKeys();
+      var modelRaw = $('s-model').value.trim();
+      var cfg = {
+        provider: $('s-provider').value,
+        model: (!modelRaw || modelRaw === 'auto') ? '' : modelRaw,
+        baseUrl: $('s-baseurl').value.trim()
+      };
+      if (keys.length) cfg.apiKeys = keys;
+      if (state.demo) { toast('Mode demo: tidak disimpan.', 'warn'); return; }
+      srv('saveAiConfig').run(cfg, function (res) {
+        state.config = res;
+        $('s-keys').value = '';
+        paintConfig();
+        toast(keys.length ? (keys.length + ' key tersimpan.') : 'Pengaturan tersimpan.', 'ok');
+      }, function (err) { toast('Gagal: ' + errText(err), 'err'); });
+    }
+    function testConnection() {
+      if (state.demo) { toast('Mode demo.', 'warn'); return; }
+      var btn = $('btnTest'); btn.disabled = true; btn.textContent = 'Menguji…';
+      var modelRaw = $('s-model').value.trim();
+      srv('testAiConnection').run((!modelRaw || modelRaw === 'auto') ? '' : modelRaw, function (res) {
+        btn.disabled = false; btn.textContent = 'Tes Koneksi';
+        showResult($('testResult'), !!res.ok, res.message);
+        toast(res.ok ? 'Koneksi AI OK.' : 'Koneksi gagal.', res.ok ? 'ok' : 'err');
+      }, function (err) {
+        btn.disabled = false; btn.textContent = 'Tes Koneksi';
+        showResult($('testResult'), false, errText(err));
+      });
+    }
+    function listModels() {
+      if (state.demo) { toast('Mode demo.', 'warn'); return; }
+      srv('listGeminiModels').run(function (res) {
+        if (!res || !res.ok) { toast('Gagal: ' + errText(res || '-'), 'err'); return; }
+        $('dl-models').innerHTML = ['auto'].concat(res.models).map(function (m) {
+          return '<option value="' + esc(m) + '">';
+        }).join('');
+        toast(res.models.length + ' model tersedia.', 'ok');
+      }, function (err) { toast('Error: ' + errText(err), 'err'); });
+    }
+    function clearKey() {
+      if (!confirm('Hapus SEMUA API key?')) return;
+      if (state.demo) { toast('Mode demo.', 'warn'); return; }
+      srv('clearAiKey').run(function (res) {
+        state.config = res; paintConfig(); toast('Semua API key dihapus.', 'ok');
+      }, function (err) { toast('Gagal: ' + errText(err), 'err'); });
+    }
+    function refreshKeyStatus() {
+      if (state.demo) { toast('Mode demo.', 'warn'); return; }
+      srv('getKeyStatus').run(function (res) {
+        if (!res || !res.ok) { toast('Status gagal: ' + errText(res || '-'), 'warn'); return; }
+        var st = res.status;
+        state.config.hasKey = st.terpasang;
+        state.config.jmlKey = st.jml;
+        state.config.keySiap = st.jml_siap;
+        state.config.keys = st.key;
+        paintConfig();
+      }, function (err) { toast('Error: ' + errText(err), 'err'); });
+    }
+    function resetCooldown() {
+      if (state.demo) return;
+      srv('resetAiCooldown').run(function (res) {
+        if (res && res.config) { state.config = res.config; paintConfig(); }
+        toast('Cooldown dihapus.', 'ok');
+      }, function (err) { toast('Gagal: ' + errText(err), 'err'); });
+    }
+
+    $('s-provider').addEventListener('change', function () {
+      $('baseUrlField').hidden = this.value !== 'openai';
+      fillModelDatalist(this.value);
+    });
+    $('btnSaveKey').addEventListener('click', saveConfig);
+    $('btnTest').addEventListener('click', testConnection);
+    $('btnListModels').addEventListener('click', listModels);
+    $('btnClearKey').addEventListener('click', clearKey);
+    $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
+    $('btnResetCooldown').addEventListener('click', resetCooldown);
+    loadConfig();
+  })();
+  </script>
+</body>
+
+</html>

@@ -228,9 +228,11 @@
     }
 
     if (!state.config.hasKey) {
-      toast('API key belum disimpan. Buka Pengaturan AI dulu.', 'err');
-      goto(3);
-      setAiSettingsVisible(true);
+      toast('API key belum disimpan. Buka halaman Pengaturan AI.', 'err');
+      var link = $('btnShowAi');
+      if (link && link.href) {
+        try { window.top.location.href = link.href; } catch (eNav) {}
+      }
       return;
     }
 
@@ -1499,16 +1501,14 @@
     $('btnAddManual').addEventListener('click', addManual);
 
     // panel 3
-    if ($('btnShowAi')) $('btnShowAi').addEventListener('click', function () { setAiSettingsVisible(true); });
-    if ($('btnHideAi')) $('btnHideAi').addEventListener('click', function () { setAiSettingsVisible(false); });
     $('btnBuild').addEventListener('click', buildForm);
-    $('btnSaveKey').addEventListener('click', saveConfig);
-    $('btnTest').addEventListener('click', testConnection);
-    $('btnListModels').addEventListener('click', listModels);
-    $('btnClearKey').addEventListener('click', clearKey);
-    $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
-    $('btnResetCooldown').addEventListener('click', resetCooldown);
-    $('s-provider').addEventListener('change', function () {
+    if ($('btnSaveKey')) $('btnSaveKey').addEventListener('click', saveConfig);
+    if ($('btnTest')) $('btnTest').addEventListener('click', testConnection);
+    if ($('btnListModels')) $('btnListModels').addEventListener('click', listModels);
+    if ($('btnClearKey')) $('btnClearKey').addEventListener('click', clearKey);
+    if ($('btnRefreshStatus')) $('btnRefreshStatus').addEventListener('click', refreshKeyStatus);
+    if ($('btnResetCooldown')) $('btnResetCooldown').addEventListener('click', resetCooldown);
+    if ($('s-provider')) $('s-provider').addEventListener('change', function () {
       $('baseUrlField').hidden = this.value !== 'openai';
       fillModelDatalist(this.value);
       $('s-model').value = this.value === 'openai' ? 'gpt-4o-mini' : '';
@@ -1537,6 +1537,18 @@
     initTheme();
     bind();
     updateEstimate();
+    loadConfig();
+    if (state.demo) {
+      $('emptyState').hidden = false;
+    }
+    goto(1);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+timate();
     loadConfig();
     if (state.demo) {
       $('emptyState').hidden = false;

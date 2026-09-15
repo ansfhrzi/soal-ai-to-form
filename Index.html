@@ -441,95 +441,11 @@
                 Buat Google Form Sekarang
               </button>
               <button class="btn ghost" data-goto="2" type="button">← Kembali ke Soal</button>
-              <button class="btn ghost" id="btnShowAi" type="button">Pengaturan AI</button>
+              <a class="btn ghost" id="btnShowAi" href="<?= aiUrl ?>" target="_top">Pengaturan AI</a>
             </div>
 
             <div id="resultBox" class="result" hidden></div>
           </div>
-
-          <aside class="card span-5" id="aiSettingsCard" hidden>
-            <h2 class="card-title"><span class="dot alt"></span> Koneksi AI</h2>
-
-            <label class="field">
-              <span>Provider</span>
-              <select id="s-provider">
-                <option value="gemini" selected>Google Gemini (gratis, disarankan)</option>
-                <option value="openai">OpenAI / kompatibel (base URL bisa diubah)</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>API Key <b class="req">*</b> <small class="hint">satu key per baris — boleh banyak</small></span>
-              <textarea id="s-keys" rows="4" spellcheck="false"
-                placeholder="AIzaSy… (baris 1)&#10;AIzaSy… (baris 2)&#10;AIzaSy… (baris 3)"></textarea>
-              <small class="hint" id="keyStatus">Belum ada key terpasang.</small>
-              <small class="hint">
-                Kuota gratis Gemini dihitung per <b>project × model</b>. Memasang beberapa key
-                (maks 20) membuat aplikasi bisa <b>merotasi otomatis</b> saat satu key kehabisan kuota.
-              </small>
-            </label>
-
-            <label class="field">
-              <span>Model</span>
-              <div class="input-group">
-                <input id="s-model" list="dl-models" placeholder="auto">
-                <button class="btn small ghost" id="btnListModels" type="button" title="Ambil daftar model dari akun Anda">⟳</button>
-              </div>
-              <datalist id="dl-models"></datalist>
-              <small class="hint">
-                Kosongkan / ketik <b>auto</b> untuk <b>rotasi model otomatis</b>:
-                gemini-3.6-flash → 3.5-flash → 3.5-flash-lite → 2.5-flash-lite → 2.5-flash → 2.0-flash.
-                Bila satu model kehabisan kuota harian, model berikutnya dipakai tanpa menambah key.
-              </small>
-            </label>
-
-            <label class="field" id="baseUrlField" hidden>
-              <span>Base URL kustom</span>
-              <input id="s-baseurl" placeholder="https://api.openai.com/v1">
-            </label>
-
-            <div class="field">
-              <span>Status API Key</span>
-              <div id="keyStatusBox" class="key-status">
-                <p class="hint">Klik <b>Muat Status</b> untuk melihat kondisi key &amp; model.</p>
-              </div>
-              <div class="actions" style="margin-top:8px">
-                <button class="btn small ghost" id="btnRefreshStatus" type="button">Muat Status</button>
-                <button class="btn small ghost" id="btnResetCooldown" type="button">Reset Cooldown</button>
-              </div>
-            </div>
-
-            <div class="actions">
-              <button class="btn primary" id="btnSaveKey" type="button">Simpan Pengaturan</button>
-              <button class="btn ghost" id="btnTest" type="button">Tes Koneksi</button>
-              <button class="btn danger ghost" id="btnClearKey" type="button">Hapus Key</button>
-              <button class="btn ghost" id="btnHideAi" type="button">Sembunyikan</button>
-            </div>
-
-            <div class="info-box">
-              <strong>Ambil API key Gemini</strong>
-              <p>
-                Buka <b>aistudio.google.com/apikey</b> → <i>Create API key</i> → salin.
-                Tiap proyek Google Cloud mendapat kuota sendiri, jadi beberapa key = beberapa proyek
-                = kapasitas berlipat. Gratis.
-              </p>
-            </div>
-
-            <div class="info-box">
-              <strong>Keamanan</strong>
-              <p>Key disimpan di <b>Script Properties</b> (<code>GEMINI_KEYS</code>) dan tidak pernah
-                dikirim utuh ke browser — panel status hanya menampilkan <b>4 digit terakhir</b>.
-                Jangan pernah menaruh key di file <code>JavaScript.html</code>.</p>
-            </div>
-
-            <div class="info-box warn">
-              <strong>Batas waktu</strong>
-              <p id="infoBatas">Rotasi berhenti setelah ±240 detik agar tidak menabrak batas
-                6 menit Apps Script. Untuk soal banyak, bagi jadi 2× generate.</p>
-            </div>
-
-            <div id="testResult" class="result small" hidden></div>
-          </aside>
         </div>
       </section>
     </main>

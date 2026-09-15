@@ -7,7 +7,7 @@
  *              untuk diedit, lalu membangun Google Form siap pakai + kunci
  *              jawaban otomatis (mode Kuis).
  *
- *  File      : Code.gs · AiService.gs · FormBuilder.gs · Index.html · App.html
+ *  File      : Code.gs · AiService.gs · FormBuilder.gs · Index.html · Aiservice.html
  *              Stylesheet.html · JavaScript.html
  *
  *  Deploy    : Deploy ▸ New deployment ▸ Type: Web app
@@ -24,15 +24,22 @@
  */
 
 /** Versi aplikasi — dipakai untuk cache-busting & info di UI. */
-var APP_VERSION = '1.0.20';
+var APP_VERSION = '1.0.21';
 
 /* ============================ ENTRY POINT WEB APP ======================== */
 
-/** Menampilkan halaman utama web app. */
+/** Menampilkan halaman utama atau Pengaturan AI (?page=ai). */
 function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
-    .setTitle('Soal AI ➜ Google Form')
+  var param = (e && e.parameter) || {};
+  var page = String(param.page || param.p || '').toLowerCase();
+  var isAi = (page === 'ai' || page === 'aiservice');
+  var t = HtmlService.createTemplateFromFile(isAi ? 'Aiservice' : 'Index');
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (err) { url = ''; }
+  t.homeUrl = url || '?';
+  t.aiUrl = url ? (url + '?page=ai') : '?page=ai';
+  return t.evaluate()
+    .setTitle(isAi ? 'Pengaturan AI · Soal AI' : 'Soal AI ➜ Google Form')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
