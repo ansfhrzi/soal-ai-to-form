@@ -470,20 +470,26 @@ var FormBuilder = (function () {
     form.setDescription(desc);
 
     // ---------- Pengaturan dasar ----------
-    if (opts.isQuiz) {
-      form.setIsQuiz(true);
+    /* Beberapa metode FormApp tidak ada di semua runtime — jangan sampai
+       satu pemanggilan membatalkan seluruh pembuatan form. */
+    function cobaSet_(nama, nilai) {
       try {
-        form.setShowLinkToRespondAgain(false);
-      } catch (e) {}
+        if (form && typeof form[nama] === 'function') form[nama](nilai);
+      } catch (eSet) {}
     }
-    form.setShuffleQuestionOrder(opts.acakSoal);
-    form.setRequireLogin(opts.requireLogin);
-    form.setAllowResponseEdits(false);
-    form.setShowProgressIndicator(opts.showProgressBar);
-    try { form.setCollectEmail(opts.collectEmail); } catch (e) {}
-    if (opts.limitOne) {
-      try { form.setLimitOneResponsePerUser(true); } catch (e) {}
+    if (opts.isQuiz) {
+      cobaSet_('setIsQuiz', true);
+      cobaSet_('setShowLinkToRespondAgain', false);
     }
+    /* FormApp tidak punya setShuffleQuestionOrder. Default form = tidak acak
+       (cocok untuk wacana sebagai judul+deskripsi). Acak opsi tetap di addItems_. */
+    cobaSet_('setShuffleQuestionOrder', !!opts.acakSoal);
+    cobaSet_('setRequireLogin', opts.requireLogin);
+    cobaSet_('setAllowResponseEdits', false);
+    cobaSet_('setProgressBar', opts.showProgressBar);
+    cobaSet_('setShowProgressIndicator', opts.showProgressBar);
+    cobaSet_('setCollectEmail', opts.collectEmail);
+    if (opts.limitOne) cobaSet_('setLimitOneResponsePerUser', true);
 
     // ---------- Section header (opsional, biar rapi) ----------
     if (o.pakaiSection) {
@@ -496,7 +502,9 @@ var FormBuilder = (function () {
     var dilewati = [];
     addItems_(form, questions, opts, dilewati);
 
-    form.saveAndClose();
+    try {
+      if (typeof form.saveAndClose === 'function') form.saveAndClose();
+    } catch (eSave) {}
 
     // ---------- Kunci jawaban ----------
     var key = null;
