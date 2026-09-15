@@ -81,16 +81,44 @@ var FormBuilder = (function () {
   function pecahTeks_(teks, ukuran) {
     var s = String(teks || '').replace(/\r\n/g, '\n');
     var out = [], i = 0;
+    ukuran = Math.max(20, ukuran || JUDUL_MAX_);
     while (i < s.length) {
-      if (s.length - i <= ukuran) { out.push(s.substring(i).trim()); break; }
+      if (s.length - i <= ukuran) {
+        var sisa = s.substring(i).trim();
+        if (sisa) out.push(sisa);
+        break;
+      }
       var slice = s.substring(i, i + ukuran);
-      var br = Math.max(slice.lastIndexOf('\n\n'), slice.lastIndexOf('\n'), slice.lastIndexOf(' '));
-      if (br < ukuran * 0.35) br = ukuran;
+      var min = Math.floor(ukuran * 0.45);
+      var br = -1;
+      function ambil_(sep) {
+        var p = slice.lastIndexOf(sep);
+        if (p >= min && p + sep.length > br) br = p + sep.length;
+      }
+      ambil_('\n\n');
+      if (br < 0) ambil_('. ');
+      if (br < 0) ambil_('? ');
+      if (br < 0) ambil_('! ');
+      if (br < 0) ambil_('.\n');
+      if (br < 0) ambil_('?\n');
+      if (br < 0) ambil_('!\n');
+      if (br < 0) ambil_('\n');
+      if (br < 0) ambil_(' ');
+      if (br < 0) br = ukuran;
       out.push(s.substring(i, i + br).trim());
-      i += br;
+      i += Math.max(br, 1);
       while (s.charAt(i) === '\n' || s.charAt(i) === ' ') i++;
     }
     return out.filter(function (x) { return x.length; });
+  }
+
+  function setHelp_(item, teks) {
+    try {
+      item.setHelpText(teks);
+      return true;
+    } catch (eH) {
+      return false;
+    }
   }
 
   function _samaStimulus_(a, b) {
@@ -119,24 +147,40 @@ var FormBuilder = (function () {
   }
 
   /**
-   * Menulis wacana sebagai "Judul dan deskripsi" (SectionHeaderItem)
-   * tepat sebelum kelompok soal. Teks > 300 karakter dipecah.
+   * Menulis wacana sebagai judul + deskripsi (SectionHeaderItem).
+   * Deskripsi dicoba utuh dulu — jangan dipecah di 300 karakter
+   * (batas itu untuk judul, bukan deskripsi).
    */
   function _tulisHeaderWacana_(form, teks, label, dilewati) {
     try {
-      var chunks = pecahTeks_(teks, JUDUL_MAX_);
-      if (!chunks.length) return true;
+      var full = String(teks || '').replace(/\r\n/g, '\n').trim();
+      if (!full) return true;
+      var judul = String(label || LABEL_WACANA_BAWAAN).substring(0, JUDUL_MAX_);
       var h = form.addSectionHeaderItem();
-      h.setTitle(label || LABEL_WACANA_BAWAAN);
-      try { h.setHelpText(chunks[0]); } catch (e0) {
-        h.setTitle((label || LABEL_WACANA_BAWAAN).substring(0, JUDUL_MAX_));
+      try { h.setTitle(judul); } catch (eT) {}
+
+      if (setHelp_(h, full)) return true;
+
+      var sizes = [8000, 4000, 2000, 1000, 500, JUDUL_MAX_];
+      var chunks = null;
+      var si;
+      for (si = 0; si < sizes.length; si++) {
+        var coba = pecahTeks_(full, sizes[si]);
+        if (coba.length && setHelp_(h, coba[0])) {
+          chunks = coba;
+          break;
+        }
+      }
+      if (!chunks) {
+        if (dilewati) dilewati.push('header wacana (teks disisipkan ke judul soal)');
+        return false;
       }
       var i;
       for (i = 1; i < chunks.length; i++) {
         var h2 = form.addSectionHeaderItem();
-        h2.setTitle('Wacana (lanjutan ' + (i + 1) + ')');
-        try { h2.setHelpText(chunks[i]); } catch (e1) {
-          h2.setTitle(chunks[i].substring(0, JUDUL_MAX_));
+        try { h2.setTitle(' '); } catch (eH2) {}
+        if (!setHelp_(h2, chunks[i])) {
+          try { h2.setTitle(chunks[i].substring(0, JUDUL_MAX_)); } catch (eT2) {}
         }
       }
       return true;
