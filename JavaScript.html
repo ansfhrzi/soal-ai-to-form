@@ -53,6 +53,25 @@
   }
   function huruf(i) { return String.fromCharCode(65 + i); }
 
+  /** Tempel paparan/cerita/wacana ke dalam teks soal — UI & Form hanya memakai q.text. */
+  function gabungTeksSoal(q, stimulusGlobal) {
+    q = q || {};
+    var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
+    if (!stim && (q.pakaiStimulus || q.pakai_stimulus) && stimulusGlobal) {
+      stim = String(stimulusGlobal).replace(/\r\n/g, '\n').trim();
+    }
+    q.text = String(q.text || q.pertanyaan || q.question || '').replace(/\r\n/g, '\n').trim();
+    if (stim) {
+      q.stimulus = stim;
+      q.pakaiStimulus = true;
+    }
+    return q;
+  }
+  function tempelWacanaKeSoal(list, stimulusGlobal) {
+    (list || []).forEach(function (q) { gabungTeksSoal(q, stimulusGlobal); });
+    return list;
+  }
+
   /**
    * Objek error dari Apps Script tiba sebagai object biasa, bukan Error —
    * memanggil `.message` padanya menghasilkan `undefined` dan tercetak
@@ -216,6 +235,8 @@
         }
         state.questions = res.questions || [];
         state.meta = res.meta || {};
+        if (res.stimulus) state.meta.stimulus = res.stimulus;
+        tempelWacanaKeSoal(state.questions, res.stimulus || state.meta.stimulus || '');
         afterGenerate(spec);
       },
       function (err) {
@@ -226,6 +247,7 @@
   }
 
   function afterGenerate(spec) {
+    tempelWacanaKeSoal(state.questions, '');
     if (!state.questions.length) { toast('AI tidak mengembalikan soal apa pun.', 'err'); return; }
     if (!$('g-title').value.trim()) {
       $('g-title').value = state.meta.judul || autoTitle(spec);
@@ -235,6 +257,12 @@
     toast(state.questions.length + ' soal berhasil dibuat · ' + (state.meta.model || '-') +
       ' · ' + (state.meta.key || '') + ' · ' + ((state.meta.elapsedMs || 0) / 1000).toFixed(1) + ' s' +
       (state.meta.polos ? ' · mode JSON polos' : ''), 'ok');
+    var dangling = state.questions.filter(function (q) {
+      return q.warning && /tidak disertakan/.test(q.warning);
+    }).length;
+    if (dangling) {
+      toast(dangling + ' soal merujuk paparan/wacana yang belum ada di dalam teks soal. Tempel wacananya di atas pertanyaan, atau ganti soal.', 'warn');
+    }
     goto(2);
   }
 
@@ -309,7 +337,9 @@
       '</span>' +
       '</div>' +
       '<div class="q-body">' +
-      '<textarea class="q-text" data-i="' + i + '" placeholder="Tulis soal…">' + esc(q.text) + '</textarea>' +
+      '<div class="q-wacana"><span>Wacana / paparan <small>(kosongkan jika soal mandiri)</small></span>' +
+      '<textarea class="q-stim" data-i="' + i + '" placeholder="Teks bacaan/paparan. Di Google Form jadi Judul + Deskripsi.">' + esc(q.stimulus || '') + '</textarea></div>' +
+      '<textarea class="q-text" data-i="' + i + '" placeholder="Kalimat tanya saja…">' + esc(q.text) + '</textarea>' +
       '<div class="opts" style="margin-top:10px">' + optsHtml + '</div>' +
       '<div class="q-extra">' +
       '<label><span>Pembahasan / umpan balik</span>' +
@@ -326,6 +356,11 @@
     $('qList').innerHTML = state.questions.map(questionCardHtml).join('');
     renderSummary();
     syncJson();
+    qa('textarea.q-text, textarea.q-stim').forEach(function (el) {
+      el.style.height = 'auto';
+      var minH = el.classList.contains('q-stim') ? 72 : 88;
+      el.style.height = Math.min(520, Math.max(minH, el.scrollHeight + 6)) + 'px';
+    });
   }
 
   function findQ(i) { return state.questions[Number(i)]; }
@@ -339,6 +374,7 @@
       if (i === null) return;
       var qq = findQ(i); if (!qq) return;
       if (t.classList.contains('q-text')) qq.text = t.value;
+      else if (t.classList.contains('q-stim')) qq.stimulus = t.value;
       else if (t.classList.contains('opt-input')) qq.options[Number(t.getAttribute('data-oi'))] = t.value;
       else if (t.classList.contains('q-expl')) qq.explanation = t.value;
       else if (t.classList.contains('q-level-input')) qq.level = t.value;
@@ -433,7 +469,7 @@
       function (res) {
         if (btn) { btn.disabled = false; btn.textContent = '↻'; }
         if (!res || !res.ok) { toast('Gagal: ' + errText(res || '-'), 'err'); return; }
-        state.questions[i] = res.question;
+        state.questions[i] = gabungTeksSoal(res.question, (state.meta && state.meta.stimulus) || '');
         renderQuestions();
         toast('Soal ' + (i + 1) + ' berhasil diganti.', 'ok');
       },
@@ -468,7 +504,8 @@
       var data = JSON.parse(raw);
       var arr = Array.isArray(data) ? data : (data.soal || data.questions || data.items || []);
       if (!arr.length) throw new Error('Tidak ada properti "soal" berisi array.');
-      state.questions = arr.map(function (q, i) { return normalizeQ(q, i); });
+      var stim = String(data.stimulus || (state.meta && state.meta.stimulus) || '').trim();
+      state.questions = arr.map(function (q, i) { return gabungTeksSoal(normalizeQ(q, i), stim); });
       renderQuestions();
       toast(state.questions.length + ' soal dimuat dari JSON.', 'ok');
     } catch (err) {
@@ -488,9 +525,13 @@
     }).filter(function (c) { return !isNaN(c) && c >= 0 && c < options.length; });
     if (!correct.length && options.length) correct = [0];
 
+    var text = String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).replace(/\r\n/g, '\n').trim();
+    var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
+    if (stim && text.indexOf(stim) === -1) text = stim + '\n\n' + text;
+
     return {
       type: type,
-      text: String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))),
+      text: text,
       options: options,
       correctIdx: correct,
       answerText: String(q.answerText ||
@@ -504,6 +545,8 @@
       points: Number(q.points || q.poin || 1) || 1,
       level: String(q.level || ''),
       explanation: String(q.explanation || q.pembahasan || ''),
+      stimulus: String(q.stimulus || q.wacana || q.bacaan || ''),
+      pakaiStimulus: !!(q.pakaiStimulus || q.pakai_stimulus || q.stimulus || q.wacana),
       warning: q.warning || ''
     };
   }
@@ -537,7 +580,7 @@
 
   function addManual() {
     state.questions.push({
-      type: 'pg', text: '', options: ['', '', '', ''], correctIdx: [0],
+      type: 'pg', text: '', stimulus: '', options: ['', '', '', ''], correctIdx: [0],
       points: Number($('f-poin').value) || 1, level: '', explanation: '', answerText: ''
     });
     renderQuestions();
@@ -554,6 +597,7 @@
     return {
       spec: spec,
       questions: state.questions.map(function (q) {
+        gabungTeksSoal(q, (state.meta && state.meta.stimulus) || '');
         // kunci teks untuk isian/essay ikut dikirim
         if (!TIPE_NEED_OPTIONS[q.type] && q.answerText && (!q.options || !q.options.length)) {
           q.options = [q.answerText];
@@ -568,7 +612,9 @@
         targetFormId: $('g-target').value.trim(),
         isQuiz: $('g-isQuiz').checked,
         buatKunci: $('g-buatKunci').checked,
-        acakSoal: $('g-acakSoal').checked,
+        acakSoal: $('g-acakSoal').checked && !state.questions.some(function (qq) {
+          return !!(qq.stimulus && String(qq.stimulus).trim());
+        }),
         acakOpsi: $('g-acakOpsi').checked,
         wajibSemua: $('g-wajibSemua').checked,
         nomorOtomatis: $('g-nomorOtomatis').checked,
@@ -636,7 +682,7 @@
       function (err) {
         $('btnBuild').disabled = false;
         hideOverlay();
-        showBuildErrorerrText(err);
+        showBuildError(errText(err));
         toast('Error: ' + errText(err), 'err');
       });
   }
@@ -913,9 +959,13 @@
     var p = spec.poin || 10;
     return [
       {
-        type: 'pg', text: 'Perhatikan pernyataan berikut!\nEnzim yang dihasilkan oleh lambung dan berfungsi mengubah protein menjadi pepton adalah …',
-        options: ['Amilase', 'Pepsin', 'Lipase', 'Tripsin'], correctIdx: [1], points: p, level: 'C2',
-        explanation: 'Pepsin dihasilkan lambung (dari pepsinogen yang diaktifkan HCl) dan memecah protein menjadi pepton.',
+        type: 'pg',
+        stimulus: 'Cuplikan paparan kepala sekolah pada rapat wali murid:\n"Mulai tahun depan, kantin hanya menjual makanan yang dimasak di tempat. Gorengan kemasan dan minuman bersoda dilarang karena banyak siswa mengeluh nyeri ulu hati."',
+        pakaiStimulus: true,
+        text: 'Berdasarkan cuplikan paparan di atas, kebijakan kantin terutama bertujuan untuk …',
+        options: ['Mengurangi keluhan gangguan lambung pada siswa', 'Menurunkan harga makanan di kantin', 'Mengganti seluruh menu menjadi makanan diet', 'Melarang siswa jajan di luar sekolah'],
+        correctIdx: [0], points: p, level: 'C2',
+        explanation: 'Paparan menyebut larangan gorengan kemasan dan soda karena banyak siswa nyeri ulu hati — fokusnya kesehatan lambung, bukan harga atau diet ketat.',
         answerText: ''
       },
       {

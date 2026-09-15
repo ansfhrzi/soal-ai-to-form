@@ -326,7 +326,13 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .q-points input { width: 62px; padding: 4px 7px; font-size: 12.5px; text-align: center; }
 .q-tools { display: flex; gap: 6px; }
 .q-body { padding: 14px; }
-.q-body textarea.q-text { min-height: 62px; }
+.q-body textarea.q-text { min-height: 88px; line-height: 1.5; }
+.q-wacana { margin-bottom: 10px; }
+.q-wacana > span { display: block; font-size: 12.2px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.q-wacana textarea.q-stim {
+  min-height: 110px; font-size: 13.4px;
+  background: var(--surface-2); border-style: dashed;
+}
 
 .opt-row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
 .opt-letter {

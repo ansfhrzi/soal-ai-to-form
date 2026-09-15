@@ -24,7 +24,7 @@
  */
 
 /** Versi aplikasi — dipakai untuk cache-busting & info di UI. */
-var APP_VERSION = '1.0.0';
+var APP_VERSION = '1.0.8';
 
 /* ============================ ENTRY POINT WEB APP ======================== */
 
@@ -271,7 +271,11 @@ function listGeminiModels() {
 function generateQuestions(spec) {
   try {
     validateSpec_(spec);
+    spec = spec || {};
     var result = AiService.generateQuestions(spec);
+    (result.questions || []).forEach(function (q) {
+      tempelWacanaKeSoal_(q, '');
+    });
     log_('generateQuestions', {
       mapel: spec.mapel || '',
       jumlah: result.questions.length,
@@ -295,6 +299,7 @@ function regenerateOneQuestion(spec, index, existing) {
   try {
     validateSpec_(spec);
     var one = AiService.regenerateQuestion(spec, index, existing || []);
+    tempelWacanaKeSoal_(one, '');
     return { ok: true, question: one };
   } catch (err) {
     return { ok: false, error: err.message, kode: err.kode || '' };
@@ -311,6 +316,8 @@ function buildFormFromQuestions(payload) {
     payload = payload || {};
     var questions = payload.questions || [];
     if (!questions.length) throw new Error('Daftar soal kosong. Generate soal terlebih dahulu.');
+    questions.forEach(function (q) { tempelWacanaKeSoal_(q, ''); });
+    payload.questions = questions;
     var result = FormBuilder.build(payload);
     log_('buildForm', { jumlah: result.jumlahSoal, formId: result.formId });
     return { ok: true, result: result };
@@ -331,6 +338,32 @@ function exportQuestionsToDrive(payload) {
   } catch (err) {
     return { ok: false, error: errMsg_(err) };
   }
+}
+
+/**
+ * Uji pemisahan wacana tanpa memanggil AI (tidak memakai kuota).
+ * Editor Apps Script ▸ ujiWacana ▸ Run ▸ lihat Logs.
+ * Harapan: soal 1–2 punya stimulus terpisah, soal 3 tanpa stimulus.
+ */
+function ujiWacana() {
+  var data = {
+    stimulus: 'Ibu Dian menyatakan lulusan SMK unggul dalam keterampilan praktis…',
+    soal: [
+      { tipe: 'pg', pertanyaan: 'Apa kendala utama lulusan SMK?',
+        opsi: ['A', 'B', 'C', 'D'], benar: [1], pakai_stimulus: true },
+      { tipe: 'pg', pertanyaan: 'Apa saran narasumber?',
+        opsi: ['A', 'B', 'C', 'D'], benar: [0], pakai_stimulus: true },
+      { tipe: 'pg', pertanyaan: 'Soal mandiri tanpa wacana.',
+        opsi: ['A', 'B'], benar: [0], pakai_stimulus: false }
+    ]
+  };
+  var q = AiService.normalize_(data, { poin: 10 });
+  q.forEach(function (x) {
+    Logger.log('[' + x.n + '] stim=' + (x.stimulus || '(kosong)') + '\ntext=' + x.text + '\n---');
+  });
+  return q.map(function (x) {
+    return { n: x.n, stimulus: x.stimulus || '', text: x.text };
+  });
 }
 
 /* ============================ SETUP / DIAGNOSTIK ========================= */
@@ -368,6 +401,24 @@ function onSetup() {
 }
 
 /* ============================ UTILITAS =================================== */
+
+/**
+ * Tempel paparan/cerita/wacana ke dalam teks soal (satu kesatuan).
+ * UI dan Google Form hanya menampilkan q.text — stimulus terpisah tidak terlihat.
+ */
+function tempelWacanaKeSoal_(q, stimulusGlobal) {
+  q = q || {};
+  var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
+  if (!stim && (q.pakaiStimulus || q.pakai_stimulus) && stimulusGlobal) {
+    stim = String(stimulusGlobal).replace(/\r\n/g, '\n').trim();
+  }
+  q.text = String(q.text || q.pertanyaan || q.question || '').replace(/\r\n/g, '\n').trim();
+  if (stim) {
+    q.stimulus = stim;
+    q.pakaiStimulus = true;
+  }
+  return q;
+}
 
 /** Validasi ringan konfigurasi soal sebelum memanggil AI. */
 function validateSpec_(spec) {

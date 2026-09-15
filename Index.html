@@ -224,7 +224,7 @@
             <label class="field">
               <span>Instruksi tambahan untuk AI <small class="hint">(opsional)</small></span>
               <textarea id="f-instruksi" rows="2"
-                placeholder="Contoh: gunakan konteks pertanian di Lumajang, hindari istilah asing, setiap soal ada stimulus singkat."></textarea>
+                placeholder="Contoh: gunakan konteks pertanian di Lumajang; paparan/cerita/wacana ditulis di dalam soal, bukan merujuk rekaman."></textarea>
             </label>
 
             <div class="row-3">
@@ -286,7 +286,7 @@
 
             <div class="info-box warn">
               <strong>Wajib ditinjau guru</strong>
-              <p>AI bisa salah. Selalu periksa kunci jawaban &amp; pembahasan sebelum form dibagikan ke siswa.</p>
+              <p>AI bisa salah. Periksa kunci jawaban, pembahasan, dan pastikan soal yang merujuk wacana memang memuat teks acuannya (Google Form tidak bisa memutar audio/gambar).</p>
             </div>
 
             <div class="info-box">
@@ -374,7 +374,7 @@
             <div class="switch-grid">
               <label class="switch-row"><input type="checkbox" id="g-isQuiz" checked><span>Mode Kuis (poin &amp; umpan balik otomatis)</span></label>
               <label class="switch-row"><input type="checkbox" id="g-buatKunci" checked><span>Buat Spreadsheet kunci jawaban</span></label>
-              <label class="switch-row"><input type="checkbox" id="g-acakSoal"><span>Acak urutan soal</span></label>
+              <label class="switch-row"><input type="checkbox" id="g-acakSoal"><span>Acak urutan soal <small class="hint">(otomatis mati jika ada wacana)</small></span></label>
               <label class="switch-row"><input type="checkbox" id="g-acakOpsi"><span>Acak urutan opsi jawaban</span></label>
               <label class="switch-row"><input type="checkbox" id="g-wajibSemua" checked><span>Semua soal wajib dijawab</span></label>
               <label class="switch-row"><input type="checkbox" id="g-nomorOtomatis" checked><span>Nomori soal otomatis (1., 2., …)</span></label>

@@ -66,9 +66,81 @@ var FormBuilder = (function () {
 
   function huruf_(i) { return String.fromCharCode(65 + i); }
 
+  var JUDUL_MAX_ = 300;
+  var LABEL_WACANA_BAWAAN = 'Bacalah teks berikut untuk menjawab soal di bawah ini.';
+
+  function pecahTeks_(teks, ukuran) {
+    var s = String(teks || '').replace(/\r\n/g, '\n');
+    var out = [], i = 0;
+    while (i < s.length) {
+      if (s.length - i <= ukuran) { out.push(s.substring(i).trim()); break; }
+      var slice = s.substring(i, i + ukuran);
+      var br = Math.max(slice.lastIndexOf('\n\n'), slice.lastIndexOf('\n'), slice.lastIndexOf(' '));
+      if (br < ukuran * 0.35) br = ukuran;
+      out.push(s.substring(i, i + br).trim());
+      i += br;
+      while (s.charAt(i) === '\n' || s.charAt(i) === ' ') i++;
+    }
+    return out.filter(function (x) { return x.length; });
+  }
+
+  function _samaStimulus_(a, b) {
+    return String(a || '').replace(/\s+/g, ' ').trim() ===
+      String(b || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function pisahWacanaStem_(text, stimulus) {
+    var full = String(text || '').replace(/\r\n/g, '\n').trim();
+    var stim = String(stimulus || '').replace(/\r\n/g, '\n').trim();
+    if (stim && full.indexOf(stim) === 0) {
+      return { wacana: stim, stem: full.substring(stim.length).replace(/^\s+/, '') };
+    }
+    if (stim && full.indexOf(stim) !== -1) {
+      return { wacana: stim, stem: full.split(stim).join('\n').replace(/^\s+/, '').trim() || full };
+    }
+    var parts = full.split(/\n\s*\n/);
+    if (parts.length >= 2) {
+      var stem = parts[parts.length - 1].trim();
+      var wacana = parts.slice(0, -1).join('\n\n').trim();
+      if (wacana.length >= 40 && stem.length > 0 && stem.length <= 400) {
+        return { wacana: wacana, stem: stem };
+      }
+    }
+    return { wacana: stim, stem: full };
+  }
+
   /**
-   * Menormalkan satu soal dari payload client supaya tahan terhadap
-   * perubahan bentuk data dari UI.
+   * Menulis wacana sebagai "Judul dan deskripsi" (SectionHeaderItem)
+   * tepat sebelum kelompok soal. Teks > 300 karakter dipecah.
+   */
+  function _tulisHeaderWacana_(form, teks, label, dilewati) {
+    try {
+      var chunks = pecahTeks_(teks, JUDUL_MAX_);
+      if (!chunks.length) return true;
+      var h = form.addSectionHeaderItem();
+      h.setTitle(label || LABEL_WACANA_BAWAAN);
+      try { h.setHelpText(chunks[0]); } catch (e0) {
+        h.setTitle((label || LABEL_WACANA_BAWAAN).substring(0, JUDUL_MAX_));
+      }
+      var i;
+      for (i = 1; i < chunks.length; i++) {
+        var h2 = form.addSectionHeaderItem();
+        h2.setTitle('Wacana (lanjutan ' + (i + 1) + ')');
+        try { h2.setHelpText(chunks[i]); } catch (e1) {
+          h2.setTitle(chunks[i].substring(0, JUDUL_MAX_));
+        }
+      }
+      return true;
+    } catch (e) {
+      if (dilewati) dilewati.push('header wacana (teks disisipkan ke judul soal)');
+      return false;
+    }
+  }
+
+  /**
+   * Menormalkan satu soal dari payload client.
+   * Wacana (stimulus) DIPERTAHANKAN terpisah dari kalimat tanya supaya
+   * addItems_ bisa menulisnya sebagai SectionHeaderItem.
    */
   function normQuestion_(q, i) {
     q = q || {};
@@ -94,25 +166,57 @@ var FormBuilder = (function () {
       ? String(rawBenar[0] == null ? '' : rawBenar[0]).trim()
       : '';
 
+    var stimulus = String(q.stimulus || q.wacana || q.bacaan || '').replace(/\r\n/g, '\n').trim();
+    var text = String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).replace(/\r\n/g, '\n').trim();
+    var pecah = pisahWacanaStem_(text, stimulus);
+    if (pecah.wacana) {
+      stimulus = pecah.wacana;
+      if (pecah.stem) text = pecah.stem;
+    }
+
     return {
       n: i + 1,
       type: type,
-      text: String(q.text || q.pertanyaan || q.question || ('Soal ' + (i + 1))).trim(),
+      text: text,
       options: options,
       correct: correct,
       answerText: answerText,
       points: Math.round(points * 100) / 100,
       level: String(q.level || '').trim(),
       explanation: String(q.explanation || q.pembahasan || '').trim(),
-      helpText: String(q.helpText || '').trim()
+      helpText: String(q.helpText || '').trim(),
+      stimulus: stimulus,
+      pakaiStimulus: (q.pakaiStimulus === true || q.pakai_stimulus === true || !!stimulus)
     };
   }
 
   /* ====================== PENAMBAHAN ITEM KE FORM ====================== */
 
-  function addItems_(form, questions, opts) {
+  /**
+   * @param {FormApp.Form} form
+   * @param {Array} questions
+   * @param {Object} opts
+   * @param {Array=} dilewati catatan fallback
+   */
+  function addItems_(form, questions, opts, dilewati) {
     var meta = [];
+    dilewati = dilewati || [];
+
+    /* Wacana = SectionHeaderItem (Judul + Deskripsi di editor Google Form).
+       Urutan soal TIDAK diacak agar judul+deskripsi tetap di atas soalnya. */
+    var wacanaTerakhir = '';
+    var labelWacana = opts.labelWacana || LABEL_WACANA_BAWAAN;
+
     questions.forEach(function (q) {
+      var teksWacana = (q.pakaiStimulus && q.stimulus) ? q.stimulus : '';
+
+      if (teksWacana && !_samaStimulus_(teksWacana, wacanaTerakhir)) {
+        if (_tulisHeaderWacana_(form, teksWacana, labelWacana, dilewati)) {
+          wacanaTerakhir = teksWacana;
+          teksWacana = '';
+        }
+      }
+
       var item = null, jawabanBenar = '';
 
       if (q.type === 'pg' || q.type === 'pg_kompleks' || q.type === 'dropdown') {
@@ -153,13 +257,12 @@ var FormBuilder = (function () {
         var kunci = String(q.answerText || (q.options[q.correct[0]] || q.options[0] || '') || '').trim();
         jawabanBenar = kunci;
         if (kunci && opts.pakaiValidasiIsian !== false) {
-          // Catatan: validasi Google Forms bersifat case-sensitive.
           var v = FormApp.createTextValidation().requireTextEqualTo(kunci);
           item.setValidation(v.setHelpText('Jawaban harus tepat: ' + kunci).build());
         }
         item.setFeedbackForCorrect(
           FormApp.createFeedback().setText(feedbackText_(q, kunci)).build());
-      } else { // essay
+      } else {
         item = form.addParagraphTextItem();
         item.setRows(5);
         jawabanBenar = q.explanation || q.options.join(' ') || '(dinilai manual)';
@@ -173,13 +276,25 @@ var FormBuilder = (function () {
       if (!item) return;
 
       var title = opts.nomorOtomatis ? (q.n + '. ' + q.text) : q.text;
+      if (teksWacana) {
+        /* Header gagal: tempel ke deskripsi soal, bukan ke judul. */
+        try { item.setHelpText(teksWacana.substring(0, JUDUL_MAX_)); } catch (eH0) {}
+      }
       if (opts.tampilkanLevel && q.level) title += '  [' + q.level + ']';
-      item.setTitle(title);
-      if (q.helpText && item.setHelpText) item.setHelpText(q.helpText);
+
+      try {
+        item.setTitle(title);
+      } catch (errJudul) {
+        try { item.setTitle(String(title).substring(0, JUDUL_MAX_)); }
+        catch (e2) { item.setTitle((opts.nomorOtomatis ? (q.n + '. ') : '') + 'Soal ' + q.n); }
+      }
+      if (q.helpText && item.setHelpText && !teksWacana) {
+        try { item.setHelpText(q.helpText); } catch (eH) {}
+      }
       if (opts.wajibSemua && item.setRequired) item.setRequired(true);
 
       if (opts.isQuiz && item.setPoints) {
-        try { item.setPoints(q.points); } catch (e) { /* item tanpa nilai (essay) */ }
+        try { item.setPoints(q.points); } catch (e) {}
       }
 
       meta.push({ type: q.type, item: item, jawaban: jawabanBenar, q: q });
@@ -207,7 +322,7 @@ var FormBuilder = (function () {
     var sh = ss.getSheets()[0];
     sh.setName('Kunci Jawaban');
 
-    var header = ['No', 'Tipe', 'Soal', 'Opsi Jawaban', 'Kunci', 'Poin', 'Level', 'Pembahasan'];
+    var header = ['No', 'Tipe', 'Wacana', 'Soal', 'Opsi Jawaban', 'Kunci', 'Poin', 'Level', 'Pembahasan'];
     sh.getRange(1, 1, 1, header.length).setValues([header])
       .setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
 
@@ -216,28 +331,29 @@ var FormBuilder = (function () {
       var kunci = q.correct.map(function (i) { return huruf_(i); }).join(', ');
       if (q.type === 'isian') kunci = q.answerText || q.options[0] || '-';
       if (q.type === 'essay') kunci = (q.answerText ? q.answerText + '\n\n' : '') + '(dinilai manual)';
-      return [q.n, LABEL_TIPE[q.type] || q.type, q.text, opsi, kunci, q.points, q.level, q.explanation];
+      return [q.n, LABEL_TIPE[q.type] || q.type, q.stimulus || '-', q.text, opsi, kunci, q.points, q.level, q.explanation];
     });
     if (rows.length) sh.getRange(2, 1, rows.length, header.length).setValues(rows);
 
     var totalPoin = questions.reduce(function (a, q) { return a + q.points; }, 0);
     var last = rows.length + 3;
     sh.getRange(last, 1).setValue('Total').setFontWeight('bold');
-    sh.getRange(last, 6).setValue(totalPoin).setFontWeight('bold');
+    sh.getRange(last, 7).setValue(totalPoin).setFontWeight('bold');
     sh.getRange(last + 1, 1).setValue('Jumlah soal').setFontWeight('bold');
-    sh.getRange(last + 1, 6).setValue(questions.length);
+    sh.getRange(last + 1, 7).setValue(questions.length);
     sh.getRange(last + 2, 1).setValue('Dibuat oleh');
-    sh.getRange(last + 2, 6).setValue('Soal AI ➜ Google Form · ' + new Date());
+    sh.getRange(last + 2, 7).setValue('Soal AI ➜ Google Form · ' + new Date());
 
     sh.setFrozenRows(1);
     sh.setColumnWidth(1, 45);
     sh.setColumnWidth(2, 150);
     sh.setColumnWidth(3, 420);
-    sh.setColumnWidth(4, 320);
-    sh.setColumnWidth(5, 90);
-    sh.setColumnWidth(6, 60);
-    sh.setColumnWidth(7, 70);
-    sh.setColumnWidth(8, 420);
+    sh.setColumnWidth(4, 420);
+    sh.setColumnWidth(5, 320);
+    sh.setColumnWidth(6, 90);
+    sh.setColumnWidth(7, 60);
+    sh.setColumnWidth(8, 70);
+    sh.setColumnWidth(9, 420);
     sh.getRange(2, 1, Math.max(rows.length, 1), header.length).setWrap(true).setVerticalAlignment('top');
 
     // Sheet info
@@ -291,9 +407,10 @@ var FormBuilder = (function () {
 
     var spec = payload.spec || {};
     var o = payload.form || {};
+    var adaWacana = questions.some(function (q) { return !!(q.stimulus && String(q.stimulus).trim()); });
     var opts = {
       isQuiz: o.isQuiz !== false,
-      acakSoal: !!o.acakSoal,
+      acakSoal: adaWacana ? false : !!o.acakSoal,
       acakOpsi: !!o.acakOpsi,
       requireLogin: !!o.requireLogin,
       limitOne: !!o.limitOne,
@@ -304,6 +421,8 @@ var FormBuilder = (function () {
       wajibSemua: o.wajibSemua !== false,
       isianCaseSensitive: !!o.isianCaseSensitive,
       buatKunci: o.buatKunci !== false,
+      modeWacana: o.modeWacana || '',
+      labelWacana: o.labelWacana || '',
       spec: spec,
       meta: o.meta || {}
     };
@@ -365,7 +484,8 @@ var FormBuilder = (function () {
     }
 
     // ---------- Tambahkan soal ----------
-    addItems_(form, questions, opts);
+    var dilewati = [];
+    addItems_(form, questions, opts, dilewati);
 
     form.saveAndClose();
 
@@ -396,7 +516,8 @@ var FormBuilder = (function () {
       jumlahSoal: questions.length,
       totalPoin: questions.reduce(function (a, q) { return a + q.points; }, 0),
       breakdown: breakdown,
-      kunci: key
+      kunci: key,
+      dilewati: dilewati
     };
   }
 

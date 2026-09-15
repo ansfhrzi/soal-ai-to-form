@@ -966,26 +966,32 @@ var AiService = (function () {
       properties: {
         judul: { type: 'STRING', description: 'Usulan judul form/latihan, maksimal 80 karakter.' },
         deskripsi: { type: 'STRING', description: 'Deskripsi singkat latihan + petunjuk pengerjaan.' },
-        /* Wacana bersama (diadaptasi dari LessonLen v1.5.5). Diminta sebagai
-           medan TERPISAH, bukan diselipkan ke tiap soal: model cenderung
-           menyalin ulang teks panjang ke setiap butir bila dijadikan properti
-           soal — memboroskan token keluaran. */
-        stimulus: { type: 'STRING', description: 'Teks wacana/stimulus bersama (boleh kosong).' },
+        stimulus: {
+          type: 'STRING',
+          description: 'Wacana bersama (opsional) jika beberapa soal memakai bacaan yang sama.'
+        },
         soal: {
           type: 'ARRAY',
           items: {
             type: 'OBJECT',
             properties: {
               tipe: { type: 'STRING', description: 'pg | pg_kompleks | dropdown | isian | essay' },
-              pertanyaan: { type: 'STRING', description: 'Teks soal, berdiri sendiri sebagai kalimat.' },
+              stimulus: {
+                type: 'STRING',
+                description: 'Wacana/paparan/cerita/dialog/data/tabel. Kosongkan jika soal mandiri tanpa bacaan.'
+              },
+              pakai_stimulus: { type: 'BOOLEAN', description: 'true jika soal ini memakai medan stimulus.' },
+              pertanyaan: {
+                type: 'STRING',
+                description: 'Kalimat tanya SAJA. Jangan menyalin wacana ke sini — wacana ada di medan stimulus.'
+              },
               opsi: { type: 'ARRAY', items: { type: 'STRING' } },
               benar: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'Indeks 0-based jawaban benar.' },
               poin: { type: 'INTEGER' },
               level: { type: 'STRING', description: 'C1..C6' },
               pembahasan: { type: 'STRING' },
-              pakai_stimulus: { type: 'BOOLEAN', description: 'true bila soal ini mengacu pada medan stimulus.' }
             },
-            propertyOrdering: ['tipe', 'pertanyaan', 'opsi', 'benar', 'poin', 'level', 'pembahasan', 'pakai_stimulus'],
+            propertyOrdering: ['tipe', 'stimulus', 'pakai_stimulus', 'pertanyaan', 'opsi', 'benar', 'poin', 'level', 'pembahasan'],
             required: ['tipe', 'pertanyaan', 'benar']
           }
         }
@@ -1005,18 +1011,29 @@ var AiService = (function () {
       'ATURAN WAJIB:',
       '1. Bahasa keluaran: ' + lang + '.',
       '2. Keluarkan HANYA JSON sesuai skema. Tanpa markdown, tanpa code fence, tanpa komentar.',
-      '3. Setiap "pertanyaan" harus mandiri dan lengkap (tidak merujuk soal lain).',
-      '4. Untuk tipe pg/dropdown: tepat 4 atau 5 opsi, HANYA SATU jawaban benar.',
-      '5. Untuk tipe pg_kompleks: 4-6 opsi, minimal 2 dan maksimal 3 jawaban benar.',
-      '6. Untuk tipe isian: jawaban singkat 1-3 kata; "benar" berisi 1 kemungkinan jawaban.',
-      '7. Untuk tipe essay: "opsi" kosong, "benar" berisi poin-poin kunci jawaban (1 string).',
-      '8. Indeks pada "benar" adalah 0-based dan HARUS valid terhadap panjang "opsi".',
-      '9. Jangan membuat opsi seperti "Semua jawaban benar" / "A dan B benar".',
-      '10. Hindari soal yang membutuhkan gambar/diagram kecuali diminta eksplisit.',
-      '11. "pembahasan" ringkas 1-3 kalimat: konsep yang diuji & mengapa opsi lain salah.',
-      '12. Sebar level kognitif sesuai permintaan dan hindari pengulangan konsep yang sama.',
-      '13. Bila diminta stimulus/wacana bersama, tulis HANYA di medan "stimulus" tingkat atas',
-      '    dan tandai soal terkait dengan pakai_stimulus = true. Jangan menyalinnya ke tiap soal.'
+      '3. Setiap soal harus MANDIRI dan BISA DIJAWAB hanya dari teks di JSON (stimulus + pertanyaan + opsi).',
+      '   Dilarang merujuk soal lain.',
+      '4. Google Form HANYA menampilkan teks. DILARANG soal yang mengandalkan media yang tidak bisa',
+      '   ditulis: paparan lisan, rekaman audio, podcast, video, gambar, foto, peta, diagram, infografis.',
+      '   Jangan memakai frasa seperti "Berdasarkan paparan lisan tersebut", "simak rekaman",',
+      '   "dengarkan", "perhatikan gambar di atas", "lihat video".',
+      '   Jika butuh pidato/wawancara/siaran: TULISKAN transkripnya sebagai wacana teks',
+      '   (label "Cuplikan paparan:" / "Dialog:" / "Pengumuman:").',
+      '   Jika butuh data/tabel: tulis tabel teks atau daftar angka, bukan "lihat tabel berikut" kosong.',
+      '5. Paparan, soal cerita, wacana, dialog, data, atau tabel TARUH di medan "stimulus".',
+      '   Medan "pertanyaan" HANYA berisi kalimat tanya — jangan menyalin wacana ke pertanyaan.',
+      '   Jika beberapa soal memakai wacana yang sama, isi "stimulus" yang sama pada soal-soal itu',
+      '   ATAU isi "stimulus" tingkat atas + "pakai_stimulus": true pada soal yang memakai wacana.',
+      '   Soal mandiri: stimulus kosong dan pakai_stimulus false.',
+      '6. Frasa "tersebut / di atas / berikut" HANYA boleh dipakai jika teks acuannya ada di "stimulus".',
+      '7. Untuk tipe pg/dropdown: tepat 4 atau 5 opsi, HANYA SATU jawaban benar.',
+      '8. Untuk tipe pg_kompleks: 4-6 opsi, minimal 2 dan maksimal 3 jawaban benar.',
+      '9. Untuk tipe isian: jawaban singkat 1-3 kata; "benar" berisi 1 kemungkinan jawaban.',
+      '10. Untuk tipe essay: "opsi" kosong, "benar" berisi poin-poin kunci jawaban (1 string).',
+      '11. Indeks pada "benar" adalah 0-based dan HARUS valid terhadap panjang "opsi".',
+      '12. Jangan membuat opsi seperti "Semua jawaban benar" / "A dan B benar".',
+      '13. "pembahasan" ringkas 1-3 kalimat: konsep yang diuji & mengapa opsi lain salah.',
+      '14. Sebar level kognitif sesuai permintaan dan hindari pengulangan konsep yang sama.'
     ].join('\n');
   }
 
@@ -1056,9 +1073,15 @@ var AiService = (function () {
       lines.push('', 'MATERI ACUAN (buat soal HANYA berdasarkan materi ini):', '"""', m, '"""');
     }
     if (spec.preset === 'akm') {
-      lines.push('', 'Catatan gaya AKM: gunakan stimulus berupa teks/data singkat, konteks kehidupan',
-        'nyata, dan ukur literasi membaca/numerasi — bukan hafalan.');
+      lines.push('', 'Catatan gaya AKM: WAJIB ada stimulus TERTULIS (wacana, dialog, tabel teks, data,',
+        'pengumuman). Ukur literasi membaca/numerasi, konteks kehidupan nyata — bukan hafalan.',
+        'DILARANG stimulus lisan/audio/gambar. Tulis transkrip paparan di medan "stimulus",',
+        'bukan di dalam pertanyaan.');
     }
+    lines.push('',
+      'PENTING: paparan/cerita/wacana TARUH di medan "stimulus". "pertanyaan" = kalimat tanya saja.',
+      'Google Form akan menampilkan stimulus sebagai Judul + Deskripsi (bukan bagian judul soal).',
+      'Jangan merujuk paparan/gambar/rekaman yang tidak tertulis di "stimulus".');
     if (spec.preset === 'uts' || spec.preset === 'uas') {
       lines.push('', 'Catatan gaya ujian sekolah: soal formal, berurutan dari mudah ke sulit,',
         'cakupan materi luas.');
@@ -1106,7 +1129,6 @@ var AiService = (function () {
         if (!questions.length) throw _err('AI_FORMAT', 'Model tidak menghasilkan soal apa pun.');
         return {
           questions: questions,
-          stimulus: String(data.stimulus || '').trim(),
           meta: {
             model: hasil.model,
             provider: hasil.provider || 'gemini',
@@ -1117,7 +1139,8 @@ var AiService = (function () {
             percobaan: hasil.percobaan,
             polos: !!hasil.polos,
             judul: data.judul || '',
-            deskripsi: data.deskripsi || ''
+            deskripsi: data.deskripsi || '',
+            stimulus: data.stimulus || ''
           }
         };
       } catch (errParse) {
@@ -1147,6 +1170,9 @@ var AiService = (function () {
       spec.materi ? 'Acuan materi:\n"""' + String(spec.materi).substring(0, 4000) + '"""' : '',
       hindari ? 'Soal-soal yang SUDAH ada (JANGAN diulang/diserupai):\n' + hindari : '',
       spec.instruksi ? 'Instruksi tambahan: ' + spec.instruksi : '',
+      '',
+      'Jika ada wacana, isi medan "stimulus"; "pertanyaan" hanya kalimat tanya.',
+      'Dilarang merujuk paparan lisan/gambar/rekaman yang tidak ada di stimulus.',
       '',
       'Keluarkan JSON: {"soal":[ {satu objek soal} ]}'
     ].filter(Boolean).join('\n');
@@ -1239,9 +1265,77 @@ var AiService = (function () {
     return out;
   }
 
+  /** Soal merujuk acuan ("tersebut/di atas/berikut", paparan, gambar, rekaman). */
+  function merujukAcuan_(text) {
+    return /(paparan lisan|rekaman|podcast|menyimak|dengarkan|perhatikan gambar|lihat gambar|cuplikan (video|audio)|berdasarkan .{0,60}(tersebut|di atas|berikut)|perhatikan .{0,40}(tersebut|di atas|berikut)|wacana (tersebut|di atas|berikut)|bacaan (tersebut|di atas|berikut)|tabel (tersebut|di atas|berikut)|data (tersebut|di atas|berikut)|teks (tersebut|di atas|berikut)|gambar (tersebut|di atas|berikut)|diagram (tersebut|di atas|berikut)|peta (tersebut|di atas|berikut)|the (passage|text|table|figure|recording|audio|video) (above|below))/i
+      .test(String(text || ''));
+  }
+
+  /** Merujuk media yang tidak bisa ditampilkan Google Form. */
+  function merujukMediaNonTeks_(text) {
+    return /(paparan lisan|rekaman( audio)?|podcast|siaran radio|menyimak|dengarkan|listen(ing)?|cuplikan (video|audio)|perhatikan gambar|lihat gambar|gambar (tersebut|di atas|berikut)|film pendek|peta (tersebut|di atas)|diagram (tersebut|di atas))/i
+      .test(String(text || ''));
+  }
+
+  /** Pertanyaan sudah memuat wacana sendiri (paragraf sebelum kalimat tanya). */
+  function punyaWacanaSendiri_(text) {
+    var t = String(text || '').trim();
+    var blocks = t.split(/\n\s*\n/);
+    if (blocks.length >= 2 && blocks[0].replace(/\s+/g, ' ').length >= 80) return true;
+    return t.length >= 280 && /\n/.test(t);
+  }
+
+  /** Gabungkan wacana + pertanyaan, tanpa menduplikasi bila sudah tertanam. */
+  function gabungStimulus_(stimulus, text) {
+    var stim = String(stimulus || '').trim();
+    var t = String(text || '').trim();
+    if (!stim) return t;
+    if (!t) return stim;
+    if (t.indexOf(stim) !== -1) return t;
+    return stim + '\n\n' + t;
+  }
+
+
+  /* ====================== PENYISIPAN WACANA ============================ */
+
+  var LABEL_WACANA = 'Bacalah teks berikut untuk menjawab soal.';
+
+  function _ringkasSpasi_(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Stimulus TETAP terpisah dari text (UI + Form judul/deskripsi).
+   * Tidak menggabungkan ke text.
+   */
+  function sisipkanStimulus_(list) {
+    return list;
+  }
+
+  /** Ambil wacana yang terselip di awal pertanyaan (paragraf + baris kosong). */
+  function pecahWacanaDariTeks_(text, stimulus) {
+    var full = String(text || '').replace(/\r\n/g, '\n').trim();
+    var stim = String(stimulus || '').replace(/\r\n/g, '\n').trim();
+    if (stim && full.indexOf(stim) === 0) {
+      return { wacana: stim, stem: full.substring(stim.length).replace(/^\s+/, '') };
+    }
+    if (stim && full.indexOf(stim) !== -1) {
+      return { wacana: stim, stem: full.split(stim).join('\n').replace(/^\s+/, '').trim() || full };
+    }
+    var parts = full.split(/\n\s*\n/);
+    if (parts.length >= 2) {
+      var stem = parts[parts.length - 1].trim();
+      var wacana = parts.slice(0, -1).join('\n\n').trim();
+      if (wacana.length >= 40 && stem.length > 0 && stem.length <= 400) {
+        return { wacana: wacana, stem: stem };
+      }
+    }
+    return { wacana: stim, stem: full };
+  }
+
   /**
    * Membersihkan objek mentah dari model menjadi struktur baku FormBuilder.
-   * Keluaran per soal: {type,text,options,correctIdx,points,level,explanation}
+   * Keluaran per soal: {type,text,options,correctIdx,points,level,explanation,stimulus}
    */
   function normalize_(data, spec) {
     var list = [];
@@ -1256,7 +1350,7 @@ var AiService = (function () {
     var defaultPoints = Number(spec && spec.poin ? spec.poin : 1) || 1;
     var stimulusGlobal = String(data.stimulus || '').trim();
 
-    return list.map(function (q, i) {
+    var hasil = list.map(function (q, i) {
       q = q || {};
       var text = String(q.pertanyaan || q.question || q.text || q.soal || '').trim();
 
@@ -1317,10 +1411,21 @@ var AiService = (function () {
       var points = Number(q.poin || q.points || q.bobot || defaultPoints);
       if (!isFinite(points) || points <= 0) points = defaultPoints;
 
-      /* stimulus per soal: pakai wacana bersama bila ditandai */
-      var stimulusSoal = '';
-      if (q.pakai_stimulus === true && stimulusGlobal) stimulusSoal = stimulusGlobal;
-      else if (q.stimulus) stimulusSoal = String(q.stimulus).trim();
+      /* Stimulus tetap terpisah. Jika wacana terselip di pertanyaan, dipisah. */
+      var merujuk = merujukAcuan_(text);
+      var sisa = String(q.stimulus || q.wacana || '').trim();
+      if (!sisa && stimulusGlobal && (q.pakai_stimulus === true || merujuk)) sisa = stimulusGlobal;
+      var pecah = pecahWacanaDariTeks_(text, sisa);
+      if (pecah.wacana) sisa = pecah.wacana;
+      if (pecah.stem) text = pecah.stem;
+
+      var warning = '';
+      if (!text) warning = 'Teks soal kosong dari AI';
+      else if (merujukMediaNonTeks_(text) && !sisa && !punyaWacanaSendiri_(text)) {
+        warning = 'Soal merujuk paparan/gambar/rekaman yang tidak ada di dalam teks soal';
+      } else if (merujukAcuan_(text) && !sisa && !punyaWacanaSendiri_(text)) {
+        warning = 'Soal merujuk wacana/cerita yang tidak ada di dalam teks soal';
+      }
 
       return {
         n: i + 1,
@@ -1331,12 +1436,16 @@ var AiService = (function () {
         points: points,
         level: String(q.level || q.tingkat || q.kognitif || q.cognitiveLevel || '').trim(),
         explanation: String(q.pembahasan || q.explanation || q.feedback || q.alasan || '').trim(),
-        stimulus: stimulusSoal,
-        pakaiStimulus: q.pakai_stimulus === true,
         answerText: answerText,
-        warning: !text ? 'Teks soal kosong dari AI' : ''
+        stimulus: sisa,
+        pakaiStimulus: !!sisa || q.pakai_stimulus === true,
+        warning: warning
       };
-    }).filter(function (q) { return q.text && q.text.length > 1; });
+    });
+
+    hasil = hasil.filter(function (q) { return q.text && q.text.length > 1; });
+    hasil.forEach(function (q, i) { q.n = i + 1; });
+    return hasil;
   }
 
   /* ====================== TABEL MARKDOWN → HTML ========================= */
@@ -1420,7 +1529,9 @@ var AiService = (function () {
     parseJsonSafe: parseJsonSafe,
     parseJsonSafe_: parseJsonSafe,
     normalize_: normalize_,
+    sisipkanStimulus_: sisipkanStimulus_,
     toIndexArray_: toIndexArray_,
+    gabungStimulus_: gabungStimulus_,
     tabelMarkdownKeHtml: tabelMarkdownKeHtml,
 
     /* diagnostik */
