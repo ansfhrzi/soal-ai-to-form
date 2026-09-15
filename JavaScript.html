@@ -12,11 +12,18 @@
   /* ========================== 0. KONEKSI GAS ========================== */
   var GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? google.script.run : null;
 
+  /** Pemanggilan: srv('fn').run(...argumen, onSuccess, onError) */
   function srv(fn) {
     return {
       run: function () {
         var args = Array.prototype.slice.call(arguments);
-        var onOk = args.pop(), onErr = args.pop();
+        var onErr = args.pop();
+        var onOk = args.pop();
+        if (typeof onOk !== 'function') {
+          args.push(onOk);
+          onOk = onErr;
+          onErr = function () {};
+        }
         if (!GAS) { if (typeof onErr === 'function') onErr(new Error('DEMO')); return; }
         GAS.withSuccessHandler(onOk).withFailureHandler(onErr)[fn].apply(null, args);
       }
