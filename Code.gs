@@ -418,11 +418,11 @@ function bukaBarisBaru_(s) {
  */
 function tempelWacanaKeSoal_(q, stimulusGlobal) {
   q = q || {};
-  var stim = String(q.stimulus || q.wacana || '').replace(/\r\n/g, '\n').trim();
+  var stim = bukaBarisBaru_(q.stimulus || q.wacana || '').trim();
   if (!stim && (q.pakaiStimulus || q.pakai_stimulus) && stimulusGlobal) {
-    stim = String(stimulusGlobal).replace(/\r\n/g, '\n').trim();
+    stim = bukaBarisBaru_(stimulusGlobal).trim();
   }
-  q.text = String(q.text || q.pertanyaan || q.question || '').replace(/\r\n/g, '\n').trim();
+  q.text = bukaBarisBaru_(q.text || q.pertanyaan || q.question || '').trim();
   if (stim) {
     q.stimulus = stim;
     q.pakaiStimulus = true;
