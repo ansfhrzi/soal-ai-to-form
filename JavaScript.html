@@ -43,13 +43,26 @@
   var DEMO_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
     'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
+  /* Baris kisi-kisi mode advanced (sekaligus urutan soal di hasil). */
+  function kisiBawaan() {
+    return [
+      { tipe: 'pg', aktif: true, jumlah: 10, wacana: 0 },
+      { tipe: 'pg_kompleks', aktif: false, jumlah: 2, wacana: 0 },
+      { tipe: 'dropdown', aktif: false, jumlah: 2, wacana: 0 },
+      { tipe: 'isian', aktif: false, jumlah: 2, wacana: 0 },
+      { tipe: 'essay', aktif: false, jumlah: 2, wacana: 0 }
+    ];
+  }
+
   var state = {
     demo: !GAS,
     questions: [],
     meta: {},
     config: { provider: 'gemini', model: '', modelRotasi: [], hasKey: false, keys: [], jmlKey: 0 },
     panel: 1,
-    wacanaUi: []
+    wacanaUi: [],
+    genMode: 'standard',
+    kisi: kisiBawaan()
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -176,10 +189,20 @@
     });
   }
   function totalSoalDariUi() {
-    var mandiri = Math.max(0, Math.min(50, Number($('f-jumlah') && $('f-jumlah').value) || 0));
-    var extra = 0;
-    collectWacanaGrup().forEach(function (g) { extra += g.jumlah; });
-    return { mandiri: mandiri, extra: extra, total: mandiri + extra, grup: collectWacanaGrup() };
+    if (state.genMode === 'advanced') {
+      var rows = collectKisi();
+      var mandiri = 0, extra = 0, grup = [];
+      rows.forEach(function (r) {
+        mandiri += Math.max(0, r.jumlah - r.wacana);
+        extra += r.wacana;
+        if (r.wacana > 0) grup.push({ jumlah: r.wacana, tipe: r.tipe });
+      });
+      return { mandiri: mandiri, extra: extra, total: mandiri + extra, grup: grup, kisi: rows };
+    }
+    var mandiriStd = Math.max(0, Math.min(50, Number($('f-jumlah') && $('f-jumlah').value) || 0));
+    var extraStd = 0;
+    collectWacanaGrup().forEach(function (g) { extraStd += g.jumlah; });
+    return { mandiri: mandiriStd, extra: extraStd, total: mandiriStd + extraStd, grup: collectWacanaGrup() };
   }
   function updateWacanaHint() {
     var t = totalSoalDariUi();
@@ -206,9 +229,72 @@
     updateEstimate();
   }
 
+  /* ================== KISI-KISI (MODE ADVANCED) ================== */
+
+  /** Baris kisi yang aktif → [{tipe, jumlah, wacana}], wacana dijepit ≤ jumlah. */
+  function collectKisi() {
+    return (state.kisi || []).filter(function (r) {
+      return r.aktif && Number(r.jumlah) > 0;
+    }).map(function (r) {
+      var jml = Math.max(1, Math.min(50, Number(r.jumlah) || 0));
+      return { tipe: r.tipe, jumlah: jml, wacana: Math.max(0, Math.min(jml, Number(r.wacana) || 0)) };
+    });
+  }
+
+  function renderKisi() {
+    var box = $('kisiList');
+    if (!box) return;
+    var html = '<div class="kisi-row kisi-head"><span></span><span>Tipe soal</span><span>Jumlah</span><span>Pakai wacana</span></div>';
+    html += (state.kisi || []).map(function (r) {
+      return '<div class="kisi-row' + (r.aktif ? '' : ' is-off') + '">' +
+        '<input type="checkbox" class="k-aktif" data-tipe="' + r.tipe + '"' + (r.aktif ? ' checked' : '') +
+        ' title="Pakai tipe ini">' +
+        '<span class="kisi-label">' + esc(TIPE_LABEL[r.tipe] || r.tipe) + '</span>' +
+        '<input type="number" class="k-jml" data-tipe="' + r.tipe + '" min="0" max="50" value="' + r.jumlah +
+        '"' + (r.aktif ? '' : ' disabled') + ' title="Jumlah soal tipe ini">' +
+        '<input type="number" class="k-wac" data-tipe="' + r.tipe + '" min="0" max="50" value="' + r.wacana +
+        '"' + (r.aktif ? '' : ' disabled') + ' title="Berapa soal yang memakai wacana">' +
+        '</div>';
+    }).join('');
+    box.innerHTML = html;
+    updateKisiHint();
+    updateEstimate();
+  }
+
+  function updateKisiHint() {
+    var el = $('kisiTotalHint');
+    if (!el) return;
+    var rows = collectKisi();
+    if (!rows.length) { el.textContent = 'Aktifkan minimal satu tipe soal.'; return; }
+    var tot = 0, wac = 0;
+    rows.forEach(function (r) { tot += r.jumlah; wac += r.wacana; });
+    el.textContent = 'Total: ' + tot + ' soal (' + (tot - wac) + ' mandiri + ' + wac + ' wacana) · ' +
+      rows.map(function (r) {
+        return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah +
+          (r.wacana ? ' (wacana ' + r.wacana + ')' : '');
+      }).join(', ') + '.';
+  }
+
+  function setGenMode(m) {
+    state.genMode = (m === 'advanced') ? 'advanced' : 'standard';
+    var adv = state.genMode === 'advanced';
+    qa('#genModeTabs [data-genmode]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-genmode') === state.genMode);
+    });
+    if ($('genmode-standard')) $('genmode-standard').hidden = adv;
+    if ($('genmode-advanced')) $('genmode-advanced').hidden = !adv;
+    if ($('fJumlahWrap')) $('fJumlahWrap').hidden = adv;
+    if ($('rowUtama')) $('rowUtama').classList.toggle('mode-advanced', adv);
+    updateWacanaHint();
+    updateKisiHint();
+    updateEstimate();
+  }
+
   function collectSpec() {
     var t = totalSoalDariUi();
-    return {
+    var adv = state.genMode === 'advanced';
+    var spec = {
+      mode: adv ? 'advanced' : 'standard',
       mapel: $('f-mapel').value.trim(),
       kelas: $('f-kelas').value.trim(),
       kurikulum: $('f-kurikulum').value,
@@ -218,8 +304,9 @@
       jumlahMandiri: t.mandiri,
       wacanaGrup: t.grup,
       jumlah: Math.max(1, Math.min(50, t.total || 10)),
+      totalAsli: t.total,
       poin: Math.max(1, Number($('f-poin').value) || 1),
-      tipe: chipsValues('chips-tipe'),
+      tipe: adv ? (t.kisi || []).map(function (r) { return r.tipe; }) : chipsValues('chips-tipe'),
       level: chipsValues('chips-level'),
       kesulitan: $('f-kesulitan').value,
       preset: $('f-preset').value,
@@ -231,21 +318,32 @@
       format: $('f-format').value,
       thinking: $('f-thinking') ? $('f-thinking').value : 'off'
     };
+    if (adv) spec.kisi = t.kisi || [];
+    return spec;
   }
 
   function validateSpec(s) {
     if (!s.topik && !s.materi) { toast('Topik / materi wajib diisi.', 'err'); $('f-topik').focus(); return false; }
-    if (!s.tipe.length) { toast('Pilih minimal satu tipe soal.', 'err'); return false; }
+    if (s.mode === 'advanced') {
+      if (!s.kisi || !s.kisi.length) { toast('Mode advanced: aktifkan minimal satu tipe di kisi-kisi.', 'err'); return false; }
+    } else {
+      if (!s.tipe.length) { toast('Pilih minimal satu tipe soal.', 'err'); return false; }
+    }
     if (!s.level.length) { toast('Pilih minimal satu level kognitif.', 'err'); return false; }
-    if (!(s.jumlah >= 1)) { toast('Total soal minimal 1. Isi jumlah soal mandiri atau tambah soal wacana.', 'err'); return false; }
-    if (s.jumlah > 50) { toast('Total soal maksimal 50.', 'err'); return false; }
+    if (!(s.jumlah >= 1)) { toast('Total soal minimal 1. Isi jumlah soal/kisi-kisi terlebih dahulu.', 'err'); return false; }
+    if ((s.totalAsli || s.jumlah) > 50) { toast('Total soal maksimal 50.', 'err'); return false; }
     if (s.jumlah > 30) toast('Jumlah soal ' + s.jumlah + ' — proses bisa lama. Pertimbangkan dibagi 2×.', 'warn');
     return true;
   }
 
   function updateEstimate() {
-    var n = (totalSoalDariUi().total) || Number($('f-jumlah').value) || 10;
-    var tipe = chipsValues('chips-tipe');
+    var tt = totalSoalDariUi();
+    var n = tt.total || Number($('f-jumlah').value) || 10;
+    var tipe = state.genMode === 'advanced'
+      ? (tt.kisi || []).map(function (r) {
+          return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah + (r.wacana ? ' (wacana ' + r.wacana + ')' : '');
+        })
+      : chipsValues('chips-tipe');
     var tokens = 2048 + n * 900;
     var detik = Math.round(6 + n * (tipe.length > 2 ? 1.6 : 1.1));
     $('estimate').textContent = n + ' soal ≈ ' + detik + '–' + (detik + 12) + ' detik · ±' +
@@ -1416,6 +1514,14 @@
     $('f-preset').value = 'hots';
     setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
     setChips('chips-level', ['C3', 'C4', 'C5']);
+    state.kisi = [
+      { tipe: 'pg', aktif: true, jumlah: 6, wacana: 2 },
+      { tipe: 'pg_kompleks', aktif: true, jumlah: 2, wacana: 0 },
+      { tipe: 'dropdown', aktif: false, jumlah: 2, wacana: 0 },
+      { tipe: 'isian', aktif: true, jumlah: 1, wacana: 0 },
+      { tipe: 'essay', aktif: true, jumlah: 1, wacana: 0 }
+    ];
+    renderKisi();
     $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
     updateEstimate();
     updateWacanaHint();
@@ -1427,6 +1533,8 @@
     $('f-jumlah').value = 10; $('f-poin').value = 10;
     state.wacanaUi = [];
     renderWacanaList();
+    state.kisi = kisiBawaan();
+    renderKisi();
     $('f-kesulitan').value = 'sedang'; $('f-preset').value = 'umum'; $('f-bahasa').value = 'id';
     $('f-temp').value = 0.8; $('out-temp').textContent = '0.8';
     if ($('f-thinking')) $('f-thinking').value = '';
@@ -1498,6 +1606,30 @@
     $('f-poin').addEventListener('input', updateEstimate);
     qa('#chips-tipe input').forEach(function (c) { c.addEventListener('change', updateEstimate); });
     $('f-temp').addEventListener('input', function () { $('out-temp').textContent = this.value; });
+
+    qa('#genModeTabs [data-genmode]').forEach(function (b) {
+      b.addEventListener('click', function () { setGenMode(b.getAttribute('data-genmode')); });
+    });
+    if ($('kisiList')) {
+      $('kisiList').addEventListener('input', function (e) {
+        var t = e.target, tipe = t.getAttribute('data-tipe');
+        if (!tipe) return;
+        var row = null;
+        (state.kisi || []).forEach(function (r) { if (r.tipe === tipe) row = r; });
+        if (!row) return;
+        if (t.classList.contains('k-jml')) row.jumlah = Math.max(0, Math.min(50, Number(t.value) || 0));
+        else if (t.classList.contains('k-wac')) row.wacana = Math.max(0, Math.min(50, Number(t.value) || 0));
+        else return;
+        updateKisiHint();
+        updateEstimate();
+      });
+      $('kisiList').addEventListener('change', function (e) {
+        var t = e.target, tipe = t.getAttribute('data-tipe');
+        if (!t.classList.contains('k-aktif') || !tipe) return;
+        (state.kisi || []).forEach(function (r) { if (r.tipe === tipe) r.aktif = t.checked; });
+        renderKisi();
+      });
+    }
 
     qa('#modeTabs [data-src]').forEach(function (b) {
       b.addEventListener('click', function () { setSumberMode(b.getAttribute('data-src')); });

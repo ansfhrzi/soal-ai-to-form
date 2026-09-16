@@ -1002,8 +1002,9 @@ var AiService = (function () {
   }
 
   function buildSystemInstruction_(spec) {
+    spec = spec || {};
     var lang = spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia';
-    return [
+    var aturan = [
       'Anda adalah guru dan penulis soal asesmen profesional yang berpengalaman membuat soal HOTS,',
       'soal AKM/ANBK, dan soal ujian sekolah. Tugas Anda menghasilkan soal yang valid, tidak ambigu,',
       'satu kunci jawaban yang pasti benar, dan pengecoh (distractor) yang masuk akal.',
@@ -1034,11 +1035,18 @@ var AiService = (function () {
       '12. Jangan membuat opsi seperti "Semua jawaban benar" / "A dan B benar".',
       '13. "pembahasan" ringkas 1-3 kalimat: konsep yang diuji & mengapa opsi lain salah.',
       '14. Sebar level kognitif sesuai permintaan dan hindari pengulangan konsep yang sama.'
-    ].join('\n');
+    ];
+    if (spec && spec.mode === 'advanced') {
+      aturan.push('15. KISI-KISI: patuhi tipe dan status wacana (mandiri/berwacana) pada TIAP nomor soal sesuai daftar. Jangan menukar urutan tipe.');
+    }
+    return aturan.join('\n');
   }
 
   function ringkasWacana_(spec) {
     spec = spec || {};
+    if (spec.mode === 'advanced' && Array.isArray(spec.kisi) && spec.kisi.length) {
+      return ringkasKisi_(spec.kisi);
+    }
     var grup = [];
     var raw = spec.wacanaGrup;
     if (Array.isArray(raw)) {
@@ -1056,10 +1064,86 @@ var AiService = (function () {
     return { mandiri: mandiri, grup: grup, total: total };
   }
 
+  var LABEL_TIPE_KISI_ = {
+    pg: 'Pilihan Ganda (PG)',
+    pg_kompleks: 'PG Kompleks',
+    dropdown: 'Dropdown',
+    isian: 'Isian Singkat',
+    essay: 'Essay'
+  };
+  function labelTipe_(t) { return LABEL_TIPE_KISI_[t] || t; }
+
+  /**
+   * Ubah kisi-kisi mode advanced jadi rencana posisional per nomor soal.
+   * Urutan: per tipe sesuai tabel, tiap tipe mandiri dulu lalu berwacana.
+   * Soal-soal berwacana dalam satu tipe memakai SATU wacana bersama.
+   * @return {mandiri, grup, total, rencana:[{tipe, grup}], advanced, tipeList, rincianTipe}
+   *   grup = -1 berarti mandiri; >= 0 berarti indeks grup wacana.
+   */
+  function ringkasKisi_(kisi) {
+    var rencana = [];
+    var grup = [];
+    var tipeList = [];
+    var rinc = [];
+    kisi.forEach(function (r) {
+      var tipe = String((r && r.tipe) || 'pg');
+      var jumlah = Math.max(0, Math.min(50, Number(r && r.jumlah) || 0));
+      if (jumlah < 1) return;
+      if (tipeList.indexOf(tipe) === -1) tipeList.push(tipe);
+      var wacana = Math.max(0, Math.min(jumlah, Number(r && r.wacana) || 0));
+      rinc.push(labelTipe_(tipe) + ' ×' + jumlah + (wacana ? ' (' + wacana + ' memakai wacana)' : ''));
+      var i;
+      for (i = 0; i < jumlah - wacana; i++) rencana.push({ tipe: tipe, grup: -1 });
+      if (wacana > 0) {
+        var gi = grup.length;
+        grup.push(wacana);
+        for (i = 0; i < wacana; i++) rencana.push({ tipe: tipe, grup: gi });
+      }
+    });
+    var mandiri = 0;
+    rencana.forEach(function (x) { if (x.grup < 0) mandiri++; });
+    return {
+      mandiri: mandiri,
+      grup: grup,
+      total: rencana.length < 1 ? 1 : rencana.length,
+      rencana: rencana,
+      advanced: true,
+      tipeList: tipeList,
+      rincianTipe: rinc.join(', ') || 'Pilihan Ganda (PG) ×1'
+    };
+  }
+
+  /** Blok kisi-kisi utk prompt mode advanced: rentang nomor pasti per (tipe, wacana). */
+  function kisiBlock_(lines, ringkas) {
+    lines.push('', 'KISI-KISI (komposisi tipe & wacana — WAJIB dipatuhi, urutan soal sesuai nomor):');
+    var blok = [];
+    ringkas.rencana.forEach(function (r, i) {
+      var last = blok[blok.length - 1];
+      if (last && last.tipe === r.tipe && last.grup === r.grup) last.sampai = i + 1;
+      else blok.push({ tipe: r.tipe, grup: r.grup, dari: i + 1, sampai: i + 1 });
+    });
+    blok.forEach(function (b) {
+      var rentang = b.dari === b.sampai ? ('Soal ' + b.dari) : ('Soal ' + b.dari + '–' + b.sampai);
+      var label = labelTipe_(b.tipe);
+      if (b.grup < 0) {
+        lines.push('- ' + rentang + ': ' + label + ', MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
+      } else if (b.dari === b.sampai) {
+        lines.push('- ' + rentang + ': ' + label + ', memakai SATU wacana sendiri. Tulis wacana di "stimulus", kalimat tanya di "pertanyaan".');
+      } else {
+        lines.push('- ' + rentang + ': ' + label + ', SATU wacana bersama (wacana ' + (b.grup + 1) + '). Isi "stimulus" yang SAMA pada soal-soal ini;',
+          '  "pertanyaan" hanya kalimat tanya yang merujuk wacana itu. Jangan salin wacana ke pertanyaan.');
+      }
+    });
+    lines.push('Jangan mengubah urutan/tipe tiap nomor. Total tepat ' + ringkas.total + ' soal.');
+  }
+
   function buildPrompt_(spec) {
     var ringkas = ringkasWacana_(spec);
     var n = ringkas.total;
-    var tipeList = (spec.tipe && spec.tipe.length ? spec.tipe : ['pg']).join(', ');
+    var adv = !!(ringkas.advanced && ringkas.rencana);
+    var tipeList = adv && ringkas.rincianTipe
+      ? ringkas.rincianTipe
+      : (spec.tipe && spec.tipe.length ? spec.tipe : ['pg']).join(', ');
     var levelList = (spec.level && spec.level.length ? spec.level : ['C3', 'C4']).join(', ');
     var komposisi = {
       mudah: '70% mudah, 20% sedang, 10% sulit',
@@ -1075,7 +1159,9 @@ var AiService = (function () {
       'Kelas / jenjang  : ' + (spec.kelas || '-'),
       'Kurikulum        : ' + (spec.kurikulum || 'Kurikulum Merdeka'),
       'Topik / materi   : ' + (spec.topik || '-'),
-      'Tipe soal        : ' + tipeList + ' (patuhi proporsi bila lebih dari satu tipe)',
+      'Tipe soal        : ' + tipeList + (adv
+        ? ' (JUMLAH PASTI sesuai kisi-kisi di bawah — bukan sekadar proporsi)'
+        : ' (patuhi proporsi bila lebih dari satu tipe)'),
       'Level kognitif   : ' + levelList,
       'Tingkat kesulitan: ' + spec.kesulitan + ' → komposisi: ' + komposisi,
       'Poin per soal    : ' + (spec.poin || 1),
@@ -1097,7 +1183,9 @@ var AiService = (function () {
         'DILARANG merujuk audio/gambar/video. Jika butuh transkrip/data, tulis teksnya di "pertanyaan"',
         '(soal mandiri) atau di "stimulus" (hanya jika guru minta soal wacana bersama).');
     }
-    if (ringkas.grup.length) {
+    if (adv) {
+      kisiBlock_(lines, ringkas);
+    } else if (ringkas.grup.length) {
       lines.push('', 'KOMPOSISI WACANA (wajib dipatuhi, urutan soal sesuai nomor):');
       var mulai = 1;
       if (ringkas.mandiri > 0) {
@@ -1132,9 +1220,15 @@ var AiService = (function () {
   function generateQuestions(spec) {
     spec = spec || {};
     var ringkas = ringkasWacana_(spec);
+    if (ringkas.total > 50) {
+      throw _err('VALIDASI_GAGAL', 'Jumlah soal maksimal 50 (diminta ' + ringkas.total + '). Bagi menjadi beberapa kali generate.');
+    }
     spec.jumlah = ringkas.total;
     spec.jumlahMandiri = ringkas.mandiri;
     spec.wacanaGrup = ringkas.grup.map(function (j) { return { jumlah: j }; });
+    if (ringkas.advanced && ringkas.tipeList && ringkas.tipeList.length) {
+      spec.tipe = ringkas.tipeList;
+    }
     var mulai = Date.now();
     var deadline = mulai + BATAS_TOTAL_MS;
     var percobaanParse = 0, lastErr = null;
@@ -1488,7 +1582,35 @@ var AiService = (function () {
 
     hasil = hasil.filter(function (q) { return q.text && q.text.length > 1; });
     var plan = ringkasWacana_(spec);
-    if (plan.grup.length) {
+    if (plan.advanced && plan.rencana) {
+      /* Mode advanced: paksa status wacana per nomor sesuai kisi & tandai
+         tipe yang menyimpang (tipe tidak dipaksa karena bisa merusak kunci). */
+      hasil.forEach(function (item, i) {
+        var r = plan.rencana[i];
+        if (!r) return;
+        if (r.grup < 0) {
+          if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
+          item.stimulus = '';
+          item.pakaiStimulus = false;
+        }
+        if (item.type !== r.tipe) {
+          var cat = 'Kisi meminta ' + labelTipe_(r.tipe) + ' (dapat ' + labelTipe_(item.type) + ')';
+          item.warning = item.warning ? (item.warning + '; ' + cat) : cat;
+        }
+      });
+      plan.grup.forEach(function (jml, gi) {
+        var idx = [];
+        plan.rencana.forEach(function (r, i) { if (r.grup === gi && i < hasil.length) idx.push(i); });
+        var first = '';
+        idx.forEach(function (i) { if (!first && hasil[i].stimulus) first = hasil[i].stimulus; });
+        idx.forEach(function (i) {
+          if (first) {
+            if (!hasil[i].stimulus) hasil[i].stimulus = first;
+            hasil[i].pakaiStimulus = true;
+          }
+        });
+      });
+    } else if (plan.grup.length) {
       hasil.forEach(function (item, i) {
         if (i < plan.mandiri) {
           if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);

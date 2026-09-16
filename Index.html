@@ -142,8 +142,13 @@
                 placeholder="Disajikan data makanan, peserta didik dapat menentukan enzim yang berperan…"></textarea>
             </label>
 
-            <div class="row-4">
-              <label class="field">
+            <div class="mode-tabs" id="genModeTabs">
+              <button type="button" class="mode-tab is-active" data-genmode="standard">Standard</button>
+              <button type="button" class="mode-tab" data-genmode="advanced">Advanced (Kisi-kisi)</button>
+            </div>
+
+            <div class="row-4" id="rowUtama">
+              <label class="field" id="fJumlahWrap">
                 <span>Jumlah soal <small class="hint">(mandiri, tanpa wacana)</small></span>
                 <div class="stepper-input">
                   <button type="button" data-step="f-jumlah" data-delta="-1">−</button>
@@ -176,6 +181,7 @@
               </label>
             </div>
 
+            <div id="genmode-standard">
             <div class="field" id="wacanaBox">
               <span>Soal wacana <small class="hint">(opsional — beberapa soal berbagi satu bacaan)</small></span>
               <div id="wacanaList"></div>
@@ -191,6 +197,15 @@
                 <label class="chip"><input type="checkbox" value="dropdown"><span>Dropdown</span></label>
                 <label class="chip"><input type="checkbox" value="isian"><span>Isian Singkat</span></label>
                 <label class="chip"><input type="checkbox" value="essay"><span>Essay</span></label>
+              </div>
+            </div>
+            </div><!-- /genmode-standard -->
+
+            <div id="genmode-advanced" hidden>
+              <div class="field">
+                <span>Kisi-kisi soal <small class="hint">(centang tipe yang dipakai — urutan soal mengikuti tabel)</small></span>
+                <div class="kisi-table" id="kisiList"></div>
+                <small class="hint" id="kisiTotalHint"></small>
               </div>
             </div>
 

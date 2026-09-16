@@ -458,6 +458,11 @@ function validateSpec_(spec) {
     throw new Error('Topik / materi soal wajib diisi.');
   }
   var n = Number(spec.jumlah || 0);
+  if (!(n >= 1) && spec.mode === 'advanced' && Array.isArray(spec.kisi)) {
+    n = 0;
+    spec.kisi.forEach(function (r) { n += Math.max(0, Number(r.jumlah) || 0); });
+    spec.jumlah = n;
+  }
   if (!(n >= 1 && n <= 50)) throw new Error('Jumlah soal harus antara 1 sampai 50.');
 }
 
