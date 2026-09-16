@@ -135,14 +135,7 @@ var FormBuilder = (function () {
     if (stim && full.indexOf(stim) !== -1) {
       return { wacana: stim, stem: full.split(stim).join('\n').replace(/^\s+/, '').trim() || full };
     }
-    var parts = full.split(/\n\s*\n/);
-    if (parts.length >= 2) {
-      var stem = parts[parts.length - 1].trim();
-      var wacana = parts.slice(0, -1).join('\n\n').trim();
-      if (wacana.length >= 40 && stem.length > 0 && stem.length <= 400) {
-        return { wacana: wacana, stem: stem };
-      }
-    }
+    /* Soal panjang tetap 1 soal — jangan pecah paragraf jadi wacana. */
     return { wacana: stim, stem: full };
   }
 

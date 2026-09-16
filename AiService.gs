@@ -978,12 +978,12 @@ var AiService = (function () {
               tipe: { type: 'STRING', description: 'pg | pg_kompleks | dropdown | isian | essay' },
               stimulus: {
                 type: 'STRING',
-                description: 'Wacana/paparan/cerita/dialog/data/tabel. Kosongkan jika soal mandiri tanpa bacaan.'
+                description: 'Hanya diisi jika guru minta soal wacana bersama. Kosongkan untuk soal mandiri (termasuk soal cerita/panjang).'
               },
-              pakai_stimulus: { type: 'BOOLEAN', description: 'true jika soal ini memakai medan stimulus.' },
+              pakai_stimulus: { type: 'BOOLEAN', description: 'true hanya jika soal ini memakai wacana bersama.' },
               pertanyaan: {
                 type: 'STRING',
-                description: 'Kalimat tanya SAJA. Jangan menyalin wacana ke sini — wacana ada di medan stimulus.'
+                description: 'Teks soal. Soal mandiri: seluruh teks termasuk cerita panjang. Soal wacana: kalimat tanya saja.'
               },
               opsi: { type: 'ARRAY', items: { type: 'STRING' } },
               benar: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'Indeks 0-based jawaban benar.' },
@@ -1037,8 +1037,28 @@ var AiService = (function () {
     ].join('\n');
   }
 
+  function ringkasWacana_(spec) {
+    spec = spec || {};
+    var grup = [];
+    var raw = spec.wacanaGrup;
+    if (Array.isArray(raw)) {
+      raw.forEach(function (g) {
+        var n = Number(g && (g.jumlah != null ? g.jumlah : g));
+        if (isFinite(n) && n >= 1) grup.push(Math.min(20, Math.round(n)));
+      });
+    }
+    var mandiri = Number(spec.jumlahMandiri != null ? spec.jumlahMandiri : spec.jumlah) || 0;
+    if (mandiri < 0) mandiri = 0;
+    var extra = 0;
+    grup.forEach(function (x) { extra += x; });
+    var total = mandiri + extra;
+    if (total < 1) total = Math.max(1, Number(spec.jumlah) || 10);
+    return { mandiri: mandiri, grup: grup, total: total };
+  }
+
   function buildPrompt_(spec) {
-    var n = Number(spec.jumlah || 10);
+    var ringkas = ringkasWacana_(spec);
+    var n = ringkas.total;
     var tipeList = (spec.tipe && spec.tipe.length ? spec.tipe : ['pg']).join(', ');
     var levelList = (spec.level && spec.level.length ? spec.level : ['C3', 'C4']).join(', ');
     var komposisi = {
@@ -1073,15 +1093,31 @@ var AiService = (function () {
       lines.push('', 'MATERI ACUAN (buat soal HANYA berdasarkan materi ini):', '"""', m, '"""');
     }
     if (spec.preset === 'akm') {
-      lines.push('', 'Catatan gaya AKM: WAJIB ada stimulus TERTULIS (wacana, dialog, tabel teks, data,',
-        'pengumuman). Ukur literasi membaca/numerasi, konteks kehidupan nyata — bukan hafalan.',
-        'DILARANG stimulus lisan/audio/gambar. Tulis transkrip paparan di medan "stimulus",',
-        'bukan di dalam pertanyaan.');
+      lines.push('', 'Catatan gaya AKM: konteks kehidupan nyata, literasi/numerasi — bukan hafalan.',
+        'DILARANG merujuk audio/gambar/video. Jika butuh transkrip/data, tulis teksnya di "pertanyaan"',
+        '(soal mandiri) atau di "stimulus" (hanya jika guru minta soal wacana bersama).');
     }
-    lines.push('',
-      'PENTING: paparan/cerita/wacana TARUH di medan "stimulus". "pertanyaan" = kalimat tanya saja.',
-      'Google Form akan menampilkan stimulus sebagai Judul + Deskripsi (bukan bagian judul soal).',
-      'Jangan merujuk paparan/gambar/rekaman yang tidak tertulis di "stimulus".');
+    if (ringkas.grup.length) {
+      lines.push('', 'KOMPOSISI WACANA (wajib dipatuhi, urutan soal sesuai nomor):');
+      var mulai = 1;
+      if (ringkas.mandiri > 0) {
+        lines.push('- Soal ' + mulai + '–' + (mulai + ringkas.mandiri - 1) +
+          ': MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
+        mulai += ringkas.mandiri;
+      }
+      ringkas.grup.forEach(function (jml, i) {
+        var a = mulai, b = mulai + jml - 1;
+        lines.push('- Soal ' + a + (a === b ? '' : '–' + b) +
+          ': SATU wacana bersama (wacana ' + (i + 1) + '). Isi "stimulus" yang SAMA pada soal-soal ini;',
+          '  "pertanyaan" hanya kalimat tanya yang merujuk wacana itu. Jangan salin wacana ke pertanyaan.');
+        mulai += jml;
+      });
+    } else {
+      lines.push('',
+        'SEMUA soal mandiri. JANGAN isi medan "stimulus".',
+        'Soal cerita/panjang tetap SATU teks utuh di "pertanyaan" — jangan dipisah ke wacana/stimulus.',
+        'Jangan merujuk paparan/gambar/rekaman yang tidak tertulis di dalam pertanyaan.');
+    }
     if (spec.preset === 'uts' || spec.preset === 'uas') {
       lines.push('', 'Catatan gaya ujian sekolah: soal formal, berurutan dari mudah ke sulit,',
         'cakupan materi luas.');
@@ -1095,6 +1131,10 @@ var AiService = (function () {
   /** Menghasilkan daftar soal dari spesifikasi guru. */
   function generateQuestions(spec) {
     spec = spec || {};
+    var ringkas = ringkasWacana_(spec);
+    spec.jumlah = ringkas.total;
+    spec.jumlahMandiri = ringkas.mandiri;
+    spec.wacanaGrup = ringkas.grup.map(function (j) { return { jumlah: j }; });
     var mulai = Date.now();
     var deadline = mulai + BATAS_TOTAL_MS;
     var percobaanParse = 0, lastErr = null;
@@ -1171,8 +1211,8 @@ var AiService = (function () {
       hindari ? 'Soal-soal yang SUDAH ada (JANGAN diulang/diserupai):\n' + hindari : '',
       spec.instruksi ? 'Instruksi tambahan: ' + spec.instruksi : '',
       '',
-      'Jika ada wacana, isi medan "stimulus"; "pertanyaan" hanya kalimat tanya.',
-      'Dilarang merujuk paparan lisan/gambar/rekaman yang tidak ada di stimulus.',
+      'Soal mandiri: seluruh teks di "pertanyaan", stimulus kosong. Jangan pecah soal panjang ke wacana.',
+      'Dilarang merujuk paparan lisan/gambar/rekaman yang tidak tertulis.',
       '',
       'Keluarkan JSON: {"soal":[ {satu objek soal} ]}'
     ].filter(Boolean).join('\n');
@@ -1332,14 +1372,7 @@ var AiService = (function () {
     if (stim && full.indexOf(stim) !== -1) {
       return { wacana: stim, stem: full.split(stim).join('\n').replace(/^\s+/, '').trim() || full };
     }
-    var parts = full.split(/\n\s*\n/);
-    if (parts.length >= 2) {
-      var stem = parts[parts.length - 1].trim();
-      var wacana = parts.slice(0, -1).join('\n\n').trim();
-      if (wacana.length >= 40 && stem.length > 0 && stem.length <= 400) {
-        return { wacana: wacana, stem: stem };
-      }
-    }
+    /* Soal panjang tetap 1 soal — jangan pecah paragraf jadi wacana. */
     return { wacana: stim, stem: full };
   }
 
@@ -1454,6 +1487,30 @@ var AiService = (function () {
     });
 
     hasil = hasil.filter(function (q) { return q.text && q.text.length > 1; });
+    var plan = ringkasWacana_(spec);
+    if (plan.grup.length) {
+      hasil.forEach(function (item, i) {
+        if (i < plan.mandiri) {
+          if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
+          item.stimulus = '';
+          item.pakaiStimulus = false;
+        }
+      });
+      var cursor = plan.mandiri;
+      plan.grup.forEach(function (jml) {
+        var first = '', k;
+        for (k = cursor; k < cursor + jml && k < hasil.length; k++) {
+          if (hasil[k].stimulus) { first = hasil[k].stimulus; break; }
+        }
+        for (k = cursor; k < cursor + jml && k < hasil.length; k++) {
+          if (first) {
+            if (!hasil[k].stimulus) hasil[k].stimulus = first;
+            hasil[k].pakaiStimulus = true;
+          }
+        }
+        cursor += jml;
+      });
+    }
     hasil.forEach(function (q, i) { q.n = i + 1; });
     return hasil;
   }
@@ -1543,6 +1600,25 @@ var AiService = (function () {
     toIndexArray_: toIndexArray_,
     gabungStimulus_: gabungStimulus_,
     tabelMarkdownKeHtml: tabelMarkdownKeHtml,
+
+    /* diagnostik */
+    _ambilTeks: _ambilTeks,
+    _terpotong: _terpotong,
+    _pesanError: _pesanError,
+    _bersihkanJson: _bersihkanJson,
+    _daftarModel: _daftarModel,
+    _keys: _keys,
+    _gayaThink: _gayaThink,
+    _levelThink: _levelThink,
+    _muatan: _muatan,
+    _err: _err,
+
+    MODEL: MODEL,
+    MODEL_BAWAAN: MODEL_BAWAAN,
+    BATAS_TOTAL_MS: BATAS_TOTAL_MS
+  };
+})();
+ tabelMarkdownKeHtml: tabelMarkdownKeHtml,
 
     /* diagnostik */
     _ambilTeks: _ambilTeks,

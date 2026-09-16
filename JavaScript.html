@@ -48,7 +48,8 @@
     questions: [],
     meta: {},
     config: { provider: 'gemini', model: '', modelRotasi: [], hasKey: false, keys: [], jmlKey: 0 },
-    panel: 1
+    panel: 1,
+    wacanaUi: []
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -169,7 +170,44 @@
     });
   }
 
+  function collectWacanaGrup() {
+    return qa('#wacanaList .w-jml').map(function (el) {
+      return { jumlah: Math.max(1, Math.min(20, Number(el.value) || 1)) };
+    });
+  }
+  function totalSoalDariUi() {
+    var mandiri = Math.max(0, Math.min(50, Number($('f-jumlah') && $('f-jumlah').value) || 0));
+    var extra = 0;
+    collectWacanaGrup().forEach(function (g) { extra += g.jumlah; });
+    return { mandiri: mandiri, extra: extra, total: mandiri + extra, grup: collectWacanaGrup() };
+  }
+  function updateWacanaHint() {
+    var t = totalSoalDariUi();
+    var el = $('wacanaTotalHint');
+    if (!el) return;
+    if (!t.grup.length) {
+      el.textContent = 'Total: ' + t.mandiri + ' soal mandiri, tanpa wacana.';
+    } else {
+      el.textContent = 'Total: ' + t.total + ' soal (' + t.mandiri + ' mandiri + ' +
+        t.grup.map(function (g, i) { return 'wacana ' + (i + 1) + ': ' + g.jumlah; }).join(', ') + ').';
+    }
+  }
+  function renderWacanaList() {
+    var box = $('wacanaList');
+    if (!box) return;
+    box.innerHTML = (state.wacanaUi || []).map(function (g, i) {
+      return '<div class="wacana-row" data-wid="' + g.id + '">' +
+        '<span class="w-label">Wacana ' + (i + 1) + '</span>' +
+        '<label class="field"><span>Jumlah soal untuk wacana ini</span>' +
+        '<input type="number" min="1" max="20" class="w-jml" value="' + g.jumlah + '"></label>' +
+        '<button type="button" class="btn small ghost w-del">Hapus</button></div>';
+    }).join('');
+    updateWacanaHint();
+    updateEstimate();
+  }
+
   function collectSpec() {
+    var t = totalSoalDariUi();
     return {
       mapel: $('f-mapel').value.trim(),
       kelas: $('f-kelas').value.trim(),
@@ -177,7 +215,9 @@
       topik: $('f-topik').value.trim(),
       cpTp: $('f-cpTp').value.trim(),
       indikator: $('f-indikator').value.trim(),
-      jumlah: Math.max(1, Math.min(50, Number($('f-jumlah').value) || 10)),
+      jumlahMandiri: t.mandiri,
+      wacanaGrup: t.grup,
+      jumlah: Math.max(1, Math.min(50, t.total || 10)),
       poin: Math.max(1, Number($('f-poin').value) || 1),
       tipe: chipsValues('chips-tipe'),
       level: chipsValues('chips-level'),
@@ -197,12 +237,14 @@
     if (!s.topik && !s.materi) { toast('Topik / materi wajib diisi.', 'err'); $('f-topik').focus(); return false; }
     if (!s.tipe.length) { toast('Pilih minimal satu tipe soal.', 'err'); return false; }
     if (!s.level.length) { toast('Pilih minimal satu level kognitif.', 'err'); return false; }
+    if (!(s.jumlah >= 1)) { toast('Total soal minimal 1. Isi jumlah soal mandiri atau tambah soal wacana.', 'err'); return false; }
+    if (s.jumlah > 50) { toast('Total soal maksimal 50.', 'err'); return false; }
     if (s.jumlah > 30) toast('Jumlah soal ' + s.jumlah + ' — proses bisa lama. Pertimbangkan dibagi 2×.', 'warn');
     return true;
   }
 
   function updateEstimate() {
-    var n = Number($('f-jumlah').value) || 10;
+    var n = (totalSoalDariUi().total) || Number($('f-jumlah').value) || 10;
     var tipe = chipsValues('chips-tipe');
     var tokens = 2048 + n * 900;
     var detik = Math.round(6 + n * (tipe.length > 2 ? 1.6 : 1.1));
@@ -1376,12 +1418,15 @@
     setChips('chips-level', ['C3', 'C4', 'C5']);
     $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
     updateEstimate();
+    updateWacanaHint();
     toast('Contoh spesifikasi dimuat.', 'ok');
   }
 
   function resetSpec() {
     ['f-mapel', 'f-kelas', 'f-topik', 'f-cpTp', 'f-indikator', 'f-materi', 'f-instruksi'].forEach(function (id) { $(id).value = ''; });
     $('f-jumlah').value = 10; $('f-poin').value = 10;
+    state.wacanaUi = [];
+    renderWacanaList();
     $('f-kesulitan').value = 'sedang'; $('f-preset').value = 'umum'; $('f-bahasa').value = 'id';
     $('f-temp').value = 0.8; $('out-temp').textContent = '0.8';
     if ($('f-thinking')) $('f-thinking').value = '';
@@ -1421,7 +1466,35 @@
       });
     });
 
-    $('f-jumlah').addEventListener('input', updateEstimate);
+    $('f-jumlah').addEventListener('input', function () { updateWacanaHint(); updateEstimate(); });
+    if ($('btnAddWacana')) {
+      $('btnAddWacana').addEventListener('click', function () {
+        if ((state.wacanaUi || []).length >= 8) { toast('Maksimal 8 kelompok wacana.', 'warn'); return; }
+        state.wacanaUi.push({ id: Date.now(), jumlah: 2 });
+        renderWacanaList();
+      });
+    }
+    if ($('wacanaList')) {
+      $('wacanaList').addEventListener('input', function (e) {
+        var t = e.target;
+        if (!t.classList.contains('w-jml')) return;
+        var row = t.closest('.wacana-row');
+        var id = row && Number(row.getAttribute('data-wid'));
+        (state.wacanaUi || []).forEach(function (g) {
+          if (g.id === id) g.jumlah = Math.max(1, Math.min(20, Number(t.value) || 1));
+        });
+        updateWacanaHint();
+        updateEstimate();
+      });
+      $('wacanaList').addEventListener('click', function (e) {
+        var btn = e.target.closest('.w-del');
+        if (!btn) return;
+        var row = btn.closest('.wacana-row');
+        var id = row && Number(row.getAttribute('data-wid'));
+        state.wacanaUi = (state.wacanaUi || []).filter(function (g) { return g.id !== id; });
+        renderWacanaList();
+      });
+    }
     $('f-poin').addEventListener('input', updateEstimate);
     qa('#chips-tipe input').forEach(function (c) { c.addEventListener('change', updateEstimate); });
     $('f-temp').addEventListener('input', function () { $('out-temp').textContent = this.value; });
@@ -1524,6 +1597,7 @@
   function init() {
     initTheme();
     bind();
+    renderWacanaList();
     updateEstimate();
     loadConfig();
     if (state.demo) {

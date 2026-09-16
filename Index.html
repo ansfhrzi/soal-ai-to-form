@@ -144,10 +144,10 @@
 
             <div class="row-4">
               <label class="field">
-                <span>Jumlah soal</span>
+                <span>Jumlah soal <small class="hint">(mandiri, tanpa wacana)</small></span>
                 <div class="stepper-input">
                   <button type="button" data-step="f-jumlah" data-delta="-1">−</button>
-                  <input id="f-jumlah" type="number" min="1" max="50" value="10">
+                  <input id="f-jumlah" type="number" min="0" max="50" value="10">
                   <button type="button" data-step="f-jumlah" data-delta="1">+</button>
                 </div>
               </label>
@@ -174,6 +174,13 @@
                   <option value="en">English</option>
                 </select>
               </label>
+            </div>
+
+            <div class="field" id="wacanaBox">
+              <span>Soal wacana <small class="hint">(opsional — beberapa soal berbagi satu bacaan)</small></span>
+              <div id="wacanaList"></div>
+              <button type="button" class="btn small ghost" id="btnAddWacana">+ Tambahkan soal wacana</button>
+              <small class="hint" id="wacanaTotalHint">Total: 10 soal mandiri, tanpa wacana.</small>
             </div>
 
             <div class="field">
@@ -450,7 +457,7 @@
     </main>
 
     <footer class="footer">
-      <span>Soal AI ➜ Google Form · v<span id="ver">1.0.22</span></span>
+      <span>Soal AI ➜ Google Form · v<span id="ver">1.0.23</span></span>
       <span id="userEmail"></span>
     </footer>
   </div>
