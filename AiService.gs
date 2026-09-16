@@ -1037,7 +1037,7 @@ var AiService = (function () {
       '14. Sebar level kognitif sesuai permintaan dan hindari pengulangan konsep yang sama.'
     ];
     if (spec && spec.mode === 'advanced') {
-      aturan.push('15. KISI-KISI: patuhi tipe dan status wacana (mandiri/berwacana) pada TIAP nomor soal sesuai daftar. Jangan menukar urutan tipe.');
+      aturan.push('15. KISI-KISI: patuhi tipe, level kognitif, materi, dan status wacana (mandiri/berwacana) pada TIAP nomor soal sesuai daftar. Jangan menukar urutan.');
     }
     return aturan.join('\n');
   }
@@ -1075,9 +1075,9 @@ var AiService = (function () {
 
   /**
    * Ubah kisi-kisi mode advanced jadi rencana posisional per nomor soal.
-   * Urutan: per tipe sesuai tabel, tiap tipe mandiri dulu lalu berwacana.
-   * Soal-soal berwacana dalam satu tipe memakai SATU wacana bersama.
-   * @return {mandiri, grup, total, rencana:[{tipe, grup}], advanced, tipeList, rincianTipe}
+   * Tiap baris = satu kelompok homogen (satu materi, satu tipe, satu level).
+   * Baris bertanda wacana memakai SATU wacana bersama utk seluruh kelompoknya.
+   * @return {mandiri, grup, total, rencana:[{tipe, grup, level, materi}], advanced, tipeList, rincianTipe}
    *   grup = -1 berarti mandiri; >= 0 berarti indeks grup wacana.
    */
   function ringkasKisi_(kisi) {
@@ -1090,14 +1090,15 @@ var AiService = (function () {
       var jumlah = Math.max(0, Math.min(50, Number(r && r.jumlah) || 0));
       if (jumlah < 1) return;
       if (tipeList.indexOf(tipe) === -1) tipeList.push(tipe);
-      var wacana = Math.max(0, Math.min(jumlah, Number(r && r.wacana) || 0));
-      rinc.push(labelTipe_(tipe) + ' ×' + jumlah + (wacana ? ' (' + wacana + ' memakai wacana)' : ''));
-      var i;
-      for (i = 0; i < jumlah - wacana; i++) rencana.push({ tipe: tipe, grup: -1 });
-      if (wacana > 0) {
-        var gi = grup.length;
-        grup.push(wacana);
-        for (i = 0; i < wacana; i++) rencana.push({ tipe: tipe, grup: gi });
+      var level = String((r && r.level) || '').trim();
+      var materi = String((r && r.materi) || '').trim();
+      var wacana = !!(r && r.wacana);
+      rinc.push(labelTipe_(tipe) + ' ×' + jumlah + (level ? ' (' + level + ')' : '') +
+        (wacana ? ' [wacana]' : '') + (materi ? ' — ' + materi : ''));
+      var gi = -1;
+      if (wacana) { gi = grup.length; grup.push(jumlah); }
+      for (var i = 0; i < jumlah; i++) {
+        rencana.push({ tipe: tipe, grup: gi, level: level, materi: materi });
       }
     });
     var mandiri = 0;
@@ -1109,32 +1110,34 @@ var AiService = (function () {
       rencana: rencana,
       advanced: true,
       tipeList: tipeList,
-      rincianTipe: rinc.join(', ') || 'Pilihan Ganda (PG) ×1'
+      rincianTipe: rinc.join('; ') || 'Pilihan Ganda (PG) ×1'
     };
   }
 
-  /** Blok kisi-kisi utk prompt mode advanced: rentang nomor pasti per (tipe, wacana). */
+  /** Blok kisi-kisi utk prompt mode advanced: tiap baris = satu kelompok soal. */
   function kisiBlock_(lines, ringkas) {
-    lines.push('', 'KISI-KISI (komposisi tipe & wacana — WAJIB dipatuhi, urutan soal sesuai nomor):');
+    lines.push('', 'KISI-KISI (WAJIB dipatuhi — urutan, tipe, level, dan wacana tiap nomor soal):');
     var blok = [];
     ringkas.rencana.forEach(function (r, i) {
       var last = blok[blok.length - 1];
-      if (last && last.tipe === r.tipe && last.grup === r.grup) last.sampai = i + 1;
-      else blok.push({ tipe: r.tipe, grup: r.grup, dari: i + 1, sampai: i + 1 });
+      if (last && last.tipe === r.tipe && last.grup === r.grup &&
+          last.level === r.level && last.materi === r.materi) last.sampai = i + 1;
+      else blok.push({ tipe: r.tipe, grup: r.grup, level: r.level, materi: r.materi, dari: i + 1, sampai: i + 1 });
     });
     blok.forEach(function (b) {
       var rentang = b.dari === b.sampai ? ('Soal ' + b.dari) : ('Soal ' + b.dari + '–' + b.sampai);
-      var label = labelTipe_(b.tipe);
+      var ket = labelTipe_(b.tipe) + (b.level ? ', level ' + b.level : '') +
+        (b.materi ? ', materi: ' + b.materi : '');
       if (b.grup < 0) {
-        lines.push('- ' + rentang + ': ' + label + ', MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
+        lines.push('- ' + rentang + ': ' + ket + '. MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
       } else if (b.dari === b.sampai) {
-        lines.push('- ' + rentang + ': ' + label + ', memakai SATU wacana sendiri. Tulis wacana di "stimulus", kalimat tanya di "pertanyaan".');
+        lines.push('- ' + rentang + ': ' + ket + '. Memakai SATU wacana sendiri tentang materi tersebut. Tulis wacana di "stimulus", kalimat tanya di "pertanyaan".');
       } else {
-        lines.push('- ' + rentang + ': ' + label + ', SATU wacana bersama (wacana ' + (b.grup + 1) + '). Isi "stimulus" yang SAMA pada soal-soal ini;',
+        lines.push('- ' + rentang + ': ' + ket + '. SATU wacana bersama (wacana ' + (b.grup + 1) + ') tentang materi tersebut. Isi "stimulus" yang SAMA pada soal-soal ini;',
           '  "pertanyaan" hanya kalimat tanya yang merujuk wacana itu. Jangan salin wacana ke pertanyaan.');
       }
     });
-    lines.push('Jangan mengubah urutan/tipe tiap nomor. Total tepat ' + ringkas.total + ' soal.');
+    lines.push('Jangan mengubah urutan/tipe/level tiap nomor. Total tepat ' + ringkas.total + ' soal.');
   }
 
   function buildPrompt_(spec) {
@@ -1144,7 +1147,9 @@ var AiService = (function () {
     var tipeList = adv && ringkas.rincianTipe
       ? ringkas.rincianTipe
       : (spec.tipe && spec.tipe.length ? spec.tipe : ['pg']).join(', ');
-    var levelList = (spec.level && spec.level.length ? spec.level : ['C3', 'C4']).join(', ');
+    var levelList = adv
+      ? 'bervariasi per baris (lihat KISI-KISI)'
+      : (spec.level && spec.level.length ? spec.level : ['C3', 'C4']).join(', ');
     var komposisi = {
       mudah: '70% mudah, 20% sedang, 10% sulit',
       sedang: '20% mudah, 60% sedang, 20% sulit',
@@ -1583,11 +1588,14 @@ var AiService = (function () {
     hasil = hasil.filter(function (q) { return q.text && q.text.length > 1; });
     var plan = ringkasWacana_(spec);
     if (plan.advanced && plan.rencana) {
-      /* Mode advanced: paksa status wacana per nomor sesuai kisi & tandai
-         tipe yang menyimpang (tipe tidak dipaksa karena bisa merusak kunci). */
+      /* Mode advanced: paksa level & status wacana per nomor sesuai kisi,
+         catat materi, dan tandai tipe yang menyimpang (tipe tidak dipaksa
+         karena bisa merusak kunci jawaban). */
       hasil.forEach(function (item, i) {
         var r = plan.rencana[i];
         if (!r) return;
+        if (r.level) item.level = r.level;
+        item.materi = r.materi || '';
         if (r.grup < 0) {
           if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
           item.stimulus = '';

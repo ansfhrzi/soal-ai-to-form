@@ -43,15 +43,23 @@
   var DEMO_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
     'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
-  /* Baris kisi-kisi mode advanced (sekaligus urutan soal di hasil). */
+  /* Baris kisi-kisi mode advanced: tiap baris = satu kelompok soal homogen
+     (satu materi, satu tipe, satu level; urutan soal mengikuti tabel). */
+  var _kisiId = 0;
+  function kisiBaru(isi) {
+    isi = isi || {};
+    _kisiId++;
+    return {
+      id: _kisiId,
+      materi: String(isi.materi || ''),
+      tipe: isi.tipe || 'pg',
+      level: isi.level || 'C4',
+      jumlah: Math.max(1, Math.min(50, Number(isi.jumlah) || 2)),
+      wacana: !!isi.wacana
+    };
+  }
   function kisiBawaan() {
-    return [
-      { tipe: 'pg', aktif: true, jumlah: 10, wacana: 0 },
-      { tipe: 'pg_kompleks', aktif: false, jumlah: 2, wacana: 0 },
-      { tipe: 'dropdown', aktif: false, jumlah: 2, wacana: 0 },
-      { tipe: 'isian', aktif: false, jumlah: 2, wacana: 0 },
-      { tipe: 'essay', aktif: false, jumlah: 2, wacana: 0 }
-    ];
+    return [kisiBaru({ tipe: 'pg', level: 'C4', jumlah: 10, wacana: false })];
   }
 
   var state = {
@@ -193,9 +201,8 @@
       var rows = collectKisi();
       var mandiri = 0, extra = 0, grup = [];
       rows.forEach(function (r) {
-        mandiri += Math.max(0, r.jumlah - r.wacana);
-        extra += r.wacana;
-        if (r.wacana > 0) grup.push({ jumlah: r.wacana, tipe: r.tipe });
+        if (r.wacana) { extra += r.jumlah; grup.push({ jumlah: r.jumlah, tipe: r.tipe }); }
+        else mandiri += r.jumlah;
       });
       return { mandiri: mandiri, extra: extra, total: mandiri + extra, grup: grup, kisi: rows };
     }
@@ -231,29 +238,46 @@
 
   /* ================== KISI-KISI (MODE ADVANCED) ================== */
 
-  /** Baris kisi yang aktif → [{tipe, jumlah, wacana}], wacana dijepit ≤ jumlah. */
+  /** Baris kisi → [{materi, tipe, level, jumlah, wacana}] (hanya jumlah > 0). */
   function collectKisi() {
     return (state.kisi || []).filter(function (r) {
-      return r.aktif && Number(r.jumlah) > 0;
+      return Number(r.jumlah) > 0;
     }).map(function (r) {
-      var jml = Math.max(1, Math.min(50, Number(r.jumlah) || 0));
-      return { tipe: r.tipe, jumlah: jml, wacana: Math.max(0, Math.min(jml, Number(r.wacana) || 0)) };
+      return {
+        materi: String(r.materi || '').trim(),
+        tipe: r.tipe || 'pg',
+        level: r.level || 'C4',
+        jumlah: Math.max(1, Math.min(50, Number(r.jumlah) || 0)),
+        wacana: !!r.wacana
+      };
     });
   }
 
   function renderKisi() {
     var box = $('kisiList');
     if (!box) return;
-    var html = '<div class="kisi-row kisi-head"><span></span><span>Tipe soal</span><span>Jumlah</span><span>Pakai wacana</span></div>';
-    html += (state.kisi || []).map(function (r) {
-      return '<div class="kisi-row' + (r.aktif ? '' : ' is-off') + '">' +
-        '<input type="checkbox" class="k-aktif" data-tipe="' + r.tipe + '"' + (r.aktif ? ' checked' : '') +
-        ' title="Pakai tipe ini">' +
-        '<span class="kisi-label">' + esc(TIPE_LABEL[r.tipe] || r.tipe) + '</span>' +
-        '<input type="number" class="k-jml" data-tipe="' + r.tipe + '" min="0" max="50" value="' + r.jumlah +
-        '"' + (r.aktif ? '' : ' disabled') + ' title="Jumlah soal tipe ini">' +
-        '<input type="number" class="k-wac" data-tipe="' + r.tipe + '" min="0" max="50" value="' + r.wacana +
-        '"' + (r.aktif ? '' : ' disabled') + ' title="Berapa soal yang memakai wacana">' +
+    var html = '<div class="kisi-row kisi-head"><span>No</span><span>Materi / pokok bahasan</span>' +
+      '<span>Bentuk soal</span><span>Level</span><span>Jml</span><span>Wacana</span><span>No. soal</span><span></span></div>';
+    var no = 1;
+    html += (state.kisi || []).map(function (r, i) {
+      var jml = Math.max(0, Math.min(50, Number(r.jumlah) || 0));
+      var rentang = jml > 0 ? (no + (jml > 1 ? '–' + (no + jml - 1) : '')) : '–';
+      no += jml;
+      var tipeOpt = Object.keys(TIPE_LABEL).map(function (t) {
+        return '<option value="' + t + '"' + (r.tipe === t ? ' selected' : '') + '>' + TIPE_LABEL[t] + '</option>';
+      }).join('');
+      var lvlOpt = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6'].map(function (l) {
+        return '<option value="' + l + '"' + (r.level === l ? ' selected' : '') + '>' + l + '</option>';
+      }).join('');
+      return '<div class="kisi-row" data-id="' + r.id + '">' +
+        '<span class="kisi-no">' + (i + 1) + '</span>' +
+        '<input type="text" class="k-materi" data-id="' + r.id + '" value="' + esc(r.materi) + '" placeholder="mis. Sistem pencernaan">' +
+        '<select class="k-tipe" data-id="' + r.id + '">' + tipeOpt + '</select>' +
+        '<select class="k-level" data-id="' + r.id + '">' + lvlOpt + '</select>' +
+        '<input type="number" class="k-jml" data-id="' + r.id + '" min="0" max="50" value="' + r.jumlah + '">' +
+        '<input type="checkbox" class="k-wac" data-id="' + r.id + '"' + (r.wacana ? ' checked' : '') + ' title="Kelompok ini memakai satu wacana bersama">' +
+        '<span class="kisi-range">' + rentang + '</span>' +
+        '<button type="button" class="opt-del k-del" data-id="' + r.id + '" title="Hapus baris">✕</button>' +
         '</div>';
     }).join('');
     box.innerHTML = html;
@@ -261,18 +285,32 @@
     updateEstimate();
   }
 
+  /** Perbarui kolom No. soal tanpa render ulang (agar fokus input tidak hilang). */
+  function renderKisiNomor() {
+    var no = 1;
+    qa('#kisiList .kisi-row[data-id]').forEach(function (rowEl) {
+      var id = Number(rowEl.getAttribute('data-id'));
+      var row = null;
+      (state.kisi || []).forEach(function (r) { if (r.id === id) row = r; });
+      var jml = row ? Math.max(0, Math.min(50, Number(row.jumlah) || 0)) : 0;
+      var sp = q('.kisi-range', rowEl);
+      if (sp) sp.textContent = jml > 0 ? (no + (jml > 1 ? '–' + (no + jml - 1) : '')) : '–';
+      no += jml;
+    });
+  }
+
   function updateKisiHint() {
     var el = $('kisiTotalHint');
     if (!el) return;
     var rows = collectKisi();
-    if (!rows.length) { el.textContent = 'Aktifkan minimal satu tipe soal.'; return; }
+    if (!rows.length) { el.textContent = 'Isi minimal satu baris kisi-kisi dengan jumlah > 0.'; return; }
     var tot = 0, wac = 0;
-    rows.forEach(function (r) { tot += r.jumlah; wac += r.wacana; });
+    rows.forEach(function (r) { tot += r.jumlah; if (r.wacana) wac += r.jumlah; });
     el.textContent = 'Total: ' + tot + ' soal (' + (tot - wac) + ' mandiri + ' + wac + ' wacana) · ' +
       rows.map(function (r) {
-        return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah +
-          (r.wacana ? ' (wacana ' + r.wacana + ')' : '');
-      }).join(', ') + '.';
+        return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah + ' (' + r.level +
+          (r.wacana ? ', wacana' : '') + (r.materi ? ', ' + r.materi : '') + ')';
+      }).join('; ') + '.';
   }
 
   function setGenMode(m) {
@@ -307,7 +345,9 @@
       totalAsli: t.total,
       poin: Math.max(1, Number($('f-poin').value) || 1),
       tipe: adv ? (t.kisi || []).map(function (r) { return r.tipe; }) : chipsValues('chips-tipe'),
-      level: chipsValues('chips-level'),
+      level: adv
+        ? (t.kisi || []).map(function (r) { return r.level; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; })
+        : chipsValues('chips-level'),
       kesulitan: $('f-kesulitan').value,
       preset: $('f-preset').value,
       bahasa: $('f-bahasa').value,
@@ -325,11 +365,11 @@
   function validateSpec(s) {
     if (!s.topik && !s.materi) { toast('Topik / materi wajib diisi.', 'err'); $('f-topik').focus(); return false; }
     if (s.mode === 'advanced') {
-      if (!s.kisi || !s.kisi.length) { toast('Mode advanced: aktifkan minimal satu tipe di kisi-kisi.', 'err'); return false; }
+      if (!s.kisi || !s.kisi.length) { toast('Mode advanced: isi minimal satu baris kisi-kisi.', 'err'); return false; }
     } else {
       if (!s.tipe.length) { toast('Pilih minimal satu tipe soal.', 'err'); return false; }
+      if (!s.level.length) { toast('Pilih minimal satu level kognitif.', 'err'); return false; }
     }
-    if (!s.level.length) { toast('Pilih minimal satu level kognitif.', 'err'); return false; }
     if (!(s.jumlah >= 1)) { toast('Total soal minimal 1. Isi jumlah soal/kisi-kisi terlebih dahulu.', 'err'); return false; }
     if ((s.totalAsli || s.jumlah) > 50) { toast('Total soal maksimal 50.', 'err'); return false; }
     if (s.jumlah > 30) toast('Jumlah soal ' + s.jumlah + ' — proses bisa lama. Pertimbangkan dibagi 2×.', 'warn');
@@ -341,7 +381,7 @@
     var n = tt.total || Number($('f-jumlah').value) || 10;
     var tipe = state.genMode === 'advanced'
       ? (tt.kisi || []).map(function (r) {
-          return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah + (r.wacana ? ' (wacana ' + r.wacana + ')' : '');
+          return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah + ' (' + r.level + (r.wacana ? ', wacana' : '') + ')';
         })
       : chipsValues('chips-tipe');
     var tokens = 2048 + n * 900;
@@ -485,6 +525,7 @@
       }).join('') +
       '</select>' +
       (q.level ? '<span class="q-level">' + esc(q.level) + '</span>' : '') +
+      (q.materi ? '<span class="q-level" title="Materi (kisi-kisi)">' + esc(q.materi) + '</span>' : '') +
       (q.warning ? '<span class="q-level" style="color:var(--warn)">' + esc(q.warning) + '</span>' : '') +
       '<span class="q-points">poin <input type="number" class="q-points-input" data-i="' + i + '" min="0" step="1" value="' + esc(q.points) + '"></span>' +
       '<span class="q-tools">' +
@@ -703,6 +744,7 @@
       explanation: String(q.explanation || q.pembahasan || ''),
       stimulus: String(q.stimulus || q.wacana || q.bacaan || ''),
       pakaiStimulus: !!(q.pakaiStimulus || q.pakai_stimulus || q.stimulus || q.wacana),
+      materi: String(q.materi || ''),
       warning: q.warning || ''
     };
   }
@@ -1515,11 +1557,10 @@
     setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
     setChips('chips-level', ['C3', 'C4', 'C5']);
     state.kisi = [
-      { tipe: 'pg', aktif: true, jumlah: 6, wacana: 2 },
-      { tipe: 'pg_kompleks', aktif: true, jumlah: 2, wacana: 0 },
-      { tipe: 'dropdown', aktif: false, jumlah: 2, wacana: 0 },
-      { tipe: 'isian', aktif: true, jumlah: 1, wacana: 0 },
-      { tipe: 'essay', aktif: true, jumlah: 1, wacana: 0 }
+      kisiBaru({ materi: 'Organ pencernaan', tipe: 'pg', level: 'C3', jumlah: 4, wacana: false }),
+      kisiBaru({ materi: 'Enzim pencernaan', tipe: 'pg', level: 'C4', jumlah: 3, wacana: true }),
+      kisiBaru({ materi: 'Gangguan pencernaan', tipe: 'pg_kompleks', level: 'C4', jumlah: 2, wacana: false }),
+      kisiBaru({ materi: 'Kesehatan pencernaan', tipe: 'essay', level: 'C5', jumlah: 1, wacana: false })
     ];
     renderKisi();
     $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
@@ -1612,21 +1653,52 @@
     });
     if ($('kisiList')) {
       $('kisiList').addEventListener('input', function (e) {
-        var t = e.target, tipe = t.getAttribute('data-tipe');
-        if (!tipe) return;
+        var t = e.target, id = Number(t.getAttribute('data-id'));
+        if (!id || !t.classList) return;
         var row = null;
-        (state.kisi || []).forEach(function (r) { if (r.tipe === tipe) row = r; });
+        (state.kisi || []).forEach(function (r) { if (r.id === id) row = r; });
         if (!row) return;
-        if (t.classList.contains('k-jml')) row.jumlah = Math.max(0, Math.min(50, Number(t.value) || 0));
-        else if (t.classList.contains('k-wac')) row.wacana = Math.max(0, Math.min(50, Number(t.value) || 0));
+        if (t.classList.contains('k-materi')) row.materi = t.value;
+        else if (t.classList.contains('k-jml')) {
+          row.jumlah = Math.max(0, Math.min(50, Number(t.value) || 0));
+          renderKisiNomor();
+        }
         else return;
         updateKisiHint();
         updateEstimate();
       });
       $('kisiList').addEventListener('change', function (e) {
-        var t = e.target, tipe = t.getAttribute('data-tipe');
-        if (!t.classList.contains('k-aktif') || !tipe) return;
-        (state.kisi || []).forEach(function (r) { if (r.tipe === tipe) r.aktif = t.checked; });
+        var t = e.target, id = Number(t.getAttribute('data-id'));
+        if (!id || !t.classList) return;
+        var row = null;
+        (state.kisi || []).forEach(function (r) { if (r.id === id) row = r; });
+        if (!row) return;
+        if (t.classList.contains('k-tipe')) row.tipe = t.value;
+        else if (t.classList.contains('k-level')) row.level = t.value;
+        else if (t.classList.contains('k-wac')) row.wacana = t.checked;
+        else if (t.classList.contains('k-jml')) {
+          row.jumlah = Math.max(0, Math.min(50, Number(t.value) || 0));
+          renderKisi();
+          return;
+        }
+        else return;
+        updateKisiHint();
+        updateEstimate();
+      });
+      $('kisiList').addEventListener('click', function (e) {
+        var btn = e.target.closest('.k-del');
+        if (!btn) return;
+        var id = Number(btn.getAttribute('data-id'));
+        if ((state.kisi || []).length <= 1) { toast('Minimal satu baris kisi-kisi.', 'warn'); return; }
+        state.kisi = (state.kisi || []).filter(function (r) { return r.id !== id; });
+        renderKisi();
+      });
+    }
+    if ($('btnAddKisi')) {
+      $('btnAddKisi').addEventListener('click', function () {
+        if ((state.kisi || []).length >= 20) { toast('Maksimal 20 baris kisi-kisi.', 'warn'); return; }
+        var last = (state.kisi || [])[(state.kisi || []).length - 1] || {};
+        state.kisi.push(kisiBaru({ tipe: last.tipe || 'pg', level: last.level || 'C4', jumlah: 2, wacana: false }));
         renderKisi();
       });
     }

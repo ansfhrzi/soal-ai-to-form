@@ -199,16 +199,6 @@
                 <label class="chip"><input type="checkbox" value="essay"><span>Essay</span></label>
               </div>
             </div>
-            </div><!-- /genmode-standard -->
-
-            <div id="genmode-advanced" hidden>
-              <div class="field">
-                <span>Kisi-kisi soal <small class="hint">(centang tipe yang dipakai — urutan soal mengikuti tabel)</small></span>
-                <div class="kisi-table" id="kisiList"></div>
-                <small class="hint" id="kisiTotalHint"></small>
-              </div>
-            </div>
-
             <div class="field">
               <span>Level kognitif (Bloom)</span>
               <div class="chips" id="chips-level">
@@ -218,6 +208,16 @@
                 <label class="chip"><input type="checkbox" value="C4" checked><span>C4 Menganalisis</span></label>
                 <label class="chip"><input type="checkbox" value="C5"><span>C5 Mengevaluasi</span></label>
                 <label class="chip"><input type="checkbox" value="C6"><span>C6 Mencipta</span></label>
+              </div>
+            </div>
+            </div><!-- /genmode-standard -->
+
+            <div id="genmode-advanced" hidden>
+              <div class="field">
+                <span>Kisi-kisi soal <small class="hint">(tiap baris = satu kelompok soal — urutan soal mengikuti tabel)</small></span>
+                <div class="kisi-table" id="kisiList"></div>
+                <button type="button" class="btn small ghost" id="btnAddKisi" style="margin-top:8px">+ Tambah baris</button>
+                <small class="hint" id="kisiTotalHint" style="display:block;margin-top:6px"></small>
               </div>
             </div>
 
