@@ -1618,22 +1618,3 @@ var AiService = (function () {
     BATAS_TOTAL_MS: BATAS_TOTAL_MS
   };
 })();
- tabelMarkdownKeHtml: tabelMarkdownKeHtml,
-
-    /* diagnostik */
-    _ambilTeks: _ambilTeks,
-    _terpotong: _terpotong,
-    _pesanError: _pesanError,
-    _bersihkanJson: _bersihkanJson,
-    _daftarModel: _daftarModel,
-    _keys: _keys,
-    _gayaThink: _gayaThink,
-    _levelThink: _levelThink,
-    _muatan: _muatan,
-    _err: _err,
-
-    MODEL: MODEL,
-    MODEL_BAWAAN: MODEL_BAWAAN,
-    BATAS_TOTAL_MS: BATAS_TOTAL_MS
-  };
-})();

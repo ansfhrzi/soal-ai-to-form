@@ -457,21 +457,10 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-soft); p
 
 /* cetak */
 @media print {
-  .topbar, .toolbar, .actions, .overlay, .toasts, .banner, .key-status { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); }
-.key-status .ks-empty { padding: 12px; font-size: 12.8px; color: var(--muted); margin: 0; }
-.ks-head { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12.4px; }
-.ks-item { display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 12.8px; }
-.ks-item:last-child { border-bottom: 0; }
-.ks-label { font-family: var(--mono); font-weight: 700; min-width: 52px; }
-.ks-tail { font-family: var(--mono); color: var(--muted); }
-.ks-badge { margin-left: auto; padding: 2px 9px; border-radius: 999px; font-size: 11.4px; font-weight: 700; }
-.ks-badge.siap { background: var(--ok-soft); color: var(--ok); }
-.ks-badge.istirahat { background: var(--warn-soft); color: var(--warn); }
-.ks-badge.bermasalah { background: var(--danger-soft); color: var(--danger); }
-.ks-cursor { font-size: 11.4px; color: var(--primary); font-weight: 700; }
-code { font-family: var(--mono); font-size: .92em; background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; }
-
-.footer { display: none !important; }
-  .card { box-shadow: none; border-color: #ccc; }
+  .topbar, .toolbar, .actions, .overlay, .toasts, .banner, .footer { display: none !important; }
+  body::before { display: none; }
+  .app { max-width: none; padding: 0; }
+  .card { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+  .q-card { break-inside: avoid; }
 }
 </style>
