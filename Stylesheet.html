@@ -271,8 +271,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 /* kisi-kisi (mode advanced): tabel kelompok soal ala blueprint */
 .kisi-table { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .kisi-row {
-  display: grid; grid-template-columns: 30px minmax(150px, 1.5fr) 138px 72px 62px 58px 72px 32px;
-  gap: 8px; align-items: center; min-width: 680px;
+  display: grid; grid-template-columns: 28px minmax(120px, 1fr) minmax(150px, 1.4fr) 128px 62px 54px 54px 66px 30px;
+  gap: 8px; align-items: center; min-width: 780px;
   padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--surface-2);
 }
@@ -281,7 +281,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   font-size: 11.6px; font-weight: 700; color: var(--muted);
 }
 .kisi-row.kisi-head span:nth-child(6),
-.kisi-row.kisi-head span:nth-child(7) { text-align: center; }
+.kisi-row.kisi-head span:nth-child(7),
+.kisi-row.kisi-head span:nth-child(8) { text-align: center; }
 .kisi-no { font-weight: 700; font-size: 12.6px; color: var(--muted); text-align: center; }
 .kisi-row input[type="text"], .kisi-row input[type="number"], .kisi-row select {
   padding: 7px 8px; font-size: 12.8px;
@@ -390,6 +391,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background: var(--accent-soft); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .q-level { padding: 4px 9px; border-radius: 999px; font-size: 11.4px; font-weight: 700; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); }
+.q-level.q-ind { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-points { margin-left: auto; font-size: 12.4px; color: var(--muted); font-weight: 600; }
 .q-points input { width: 62px; padding: 4px 7px; font-size: 12.5px; text-align: center; }
 .q-tools { display: flex; gap: 6px; }

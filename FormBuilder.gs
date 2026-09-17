@@ -230,6 +230,7 @@ var FormBuilder = (function () {
       points: Math.round(points * 100) / 100,
       level: String(q.level || '').trim(),
       materi: String(q.materi || '').trim(),
+      indikator: String(q.indikator || '').trim(),
       explanation: String(q.explanation || q.pembahasan || '').trim(),
       helpText: String(q.helpText || '').trim(),
       stimulus: stimulus,
@@ -449,7 +450,7 @@ var FormBuilder = (function () {
     var sh = ss.getSheets()[0];
     sh.setName('Kunci Jawaban');
 
-    var header = ['No', 'Tipe', 'Materi', 'Wacana', 'Soal', 'Opsi Jawaban', 'Kunci', 'Poin', 'Level', 'Pembahasan'];
+    var header = ['No', 'Tipe', 'Materi', 'Indikator', 'Wacana', 'Soal', 'Opsi Jawaban', 'Kunci', 'Poin', 'Level', 'Pembahasan'];
     sh.getRange(1, 1, 1, header.length).setValues([header])
       .setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
 
@@ -458,30 +459,31 @@ var FormBuilder = (function () {
       var kunci = q.correct.map(function (i) { return huruf_(i); }).join(', ');
       if (q.type === 'isian') kunci = q.answerText || q.options[0] || '-';
       if (q.type === 'essay') kunci = (q.answerText ? q.answerText + '\n\n' : '') + '(dinilai manual)';
-      return [q.n, LABEL_TIPE[q.type] || q.type, q.materi || '-', q.stimulus || '-', q.text, opsi, kunci, q.points, q.level, q.explanation];
+      return [q.n, LABEL_TIPE[q.type] || q.type, q.materi || '-', q.indikator || '-', q.stimulus || '-', q.text, opsi, kunci, q.points, q.level, q.explanation];
     });
     if (rows.length) sh.getRange(2, 1, rows.length, header.length).setValues(rows);
 
     var totalPoin = questions.reduce(function (a, q) { return a + q.points; }, 0);
     var last = rows.length + 3;
     sh.getRange(last, 1).setValue('Total').setFontWeight('bold');
-    sh.getRange(last, 8).setValue(totalPoin).setFontWeight('bold');
+    sh.getRange(last, 9).setValue(totalPoin).setFontWeight('bold');
     sh.getRange(last + 1, 1).setValue('Jumlah soal').setFontWeight('bold');
-    sh.getRange(last + 1, 8).setValue(questions.length);
+    sh.getRange(last + 1, 9).setValue(questions.length);
     sh.getRange(last + 2, 1).setValue('Dibuat oleh');
-    sh.getRange(last + 2, 8).setValue('Soal AI ➜ Google Form · ' + new Date());
+    sh.getRange(last + 2, 9).setValue('Soal AI ➜ Google Form · ' + new Date());
 
     sh.setFrozenRows(1);
     sh.setColumnWidth(1, 45);
-    sh.setColumnWidth(2, 150);
-    sh.setColumnWidth(3, 200);
-    sh.setColumnWidth(4, 380);
-    sh.setColumnWidth(5, 380);
-    sh.setColumnWidth(6, 300);
-    sh.setColumnWidth(7, 90);
-    sh.setColumnWidth(8, 60);
-    sh.setColumnWidth(9, 70);
-    sh.setColumnWidth(10, 400);
+    sh.setColumnWidth(2, 140);
+    sh.setColumnWidth(3, 180);
+    sh.setColumnWidth(4, 220);
+    sh.setColumnWidth(5, 360);
+    sh.setColumnWidth(6, 380);
+    sh.setColumnWidth(7, 280);
+    sh.setColumnWidth(8, 80);
+    sh.setColumnWidth(9, 60);
+    sh.setColumnWidth(10, 70);
+    sh.setColumnWidth(11, 380);
     sh.getRange(2, 1, Math.max(rows.length, 1), header.length).setWrap(true).setVerticalAlignment('top');
 
     // Sheet info

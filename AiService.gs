@@ -1077,7 +1077,7 @@ var AiService = (function () {
    * Ubah kisi-kisi mode advanced jadi rencana posisional per nomor soal.
    * Tiap baris = satu kelompok homogen (satu materi, satu tipe, satu level).
    * Baris bertanda wacana memakai SATU wacana bersama utk seluruh kelompoknya.
-   * @return {mandiri, grup, total, rencana:[{tipe, grup, level, materi}], advanced, tipeList, rincianTipe}
+   * @return {mandiri, grup, total, rencana:[{tipe, grup, level, materi, indikator}], advanced, tipeList, rincianTipe}
    *   grup = -1 berarti mandiri; >= 0 berarti indeks grup wacana.
    */
   function ringkasKisi_(kisi) {
@@ -1092,13 +1092,14 @@ var AiService = (function () {
       if (tipeList.indexOf(tipe) === -1) tipeList.push(tipe);
       var level = String((r && r.level) || '').trim();
       var materi = String((r && r.materi) || '').trim();
+      var indikator = String((r && r.indikator) || '').trim();
       var wacana = !!(r && r.wacana);
       rinc.push(labelTipe_(tipe) + ' ×' + jumlah + (level ? ' (' + level + ')' : '') +
         (wacana ? ' [wacana]' : '') + (materi ? ' — ' + materi : ''));
       var gi = -1;
       if (wacana) { gi = grup.length; grup.push(jumlah); }
       for (var i = 0; i < jumlah; i++) {
-        rencana.push({ tipe: tipe, grup: gi, level: level, materi: materi });
+        rencana.push({ tipe: tipe, grup: gi, level: level, materi: materi, indikator: indikator });
       }
     });
     var mandiri = 0;
@@ -1121,13 +1122,16 @@ var AiService = (function () {
     ringkas.rencana.forEach(function (r, i) {
       var last = blok[blok.length - 1];
       if (last && last.tipe === r.tipe && last.grup === r.grup &&
-          last.level === r.level && last.materi === r.materi) last.sampai = i + 1;
-      else blok.push({ tipe: r.tipe, grup: r.grup, level: r.level, materi: r.materi, dari: i + 1, sampai: i + 1 });
+          last.level === r.level && last.materi === r.materi &&
+          last.indikator === r.indikator) last.sampai = i + 1;
+      else blok.push({ tipe: r.tipe, grup: r.grup, level: r.level, materi: r.materi,
+        indikator: r.indikator, dari: i + 1, sampai: i + 1 });
     });
     blok.forEach(function (b) {
       var rentang = b.dari === b.sampai ? ('Soal ' + b.dari) : ('Soal ' + b.dari + '–' + b.sampai);
       var ket = labelTipe_(b.tipe) + (b.level ? ', level ' + b.level : '') +
-        (b.materi ? ', materi: ' + b.materi : '');
+        (b.materi ? ', materi: ' + b.materi : '') +
+        (b.indikator ? ', indikator: ' + b.indikator : '');
       if (b.grup < 0) {
         lines.push('- ' + rentang + ': ' + ket + '. MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
       } else if (b.dari === b.sampai) {
@@ -1596,6 +1600,7 @@ var AiService = (function () {
         if (!r) return;
         if (r.level) item.level = r.level;
         item.materi = r.materi || '';
+        item.indikator = r.indikator || '';
         if (r.grup < 0) {
           if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
           item.stimulus = '';

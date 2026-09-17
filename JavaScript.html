@@ -52,6 +52,7 @@
     return {
       id: _kisiId,
       materi: String(isi.materi || ''),
+      indikator: String(isi.indikator || ''),
       tipe: isi.tipe || 'pg',
       level: isi.level || 'C4',
       jumlah: Math.max(1, Math.min(50, Number(isi.jumlah) || 2)),
@@ -245,6 +246,7 @@
     }).map(function (r) {
       return {
         materi: String(r.materi || '').trim(),
+        indikator: String(r.indikator || '').trim(),
         tipe: r.tipe || 'pg',
         level: r.level || 'C4',
         jumlah: Math.max(1, Math.min(50, Number(r.jumlah) || 0)),
@@ -257,7 +259,7 @@
     var box = $('kisiList');
     if (!box) return;
     var html = '<div class="kisi-row kisi-head"><span>No</span><span>Materi / pokok bahasan</span>' +
-      '<span>Bentuk soal</span><span>Level</span><span>Jml</span><span>Wacana</span><span>No. soal</span><span></span></div>';
+      '<span>Indikator soal</span><span>Bentuk soal</span><span>Level</span><span>Jml</span><span>Wacana</span><span>No. soal</span><span></span></div>';
     var no = 1;
     html += (state.kisi || []).map(function (r, i) {
       var jml = Math.max(0, Math.min(50, Number(r.jumlah) || 0));
@@ -272,6 +274,7 @@
       return '<div class="kisi-row" data-id="' + r.id + '">' +
         '<span class="kisi-no">' + (i + 1) + '</span>' +
         '<input type="text" class="k-materi" data-id="' + r.id + '" value="' + esc(r.materi) + '" placeholder="mis. Sistem pencernaan">' +
+        '<input type="text" class="k-indikator" data-id="' + r.id + '" value="' + esc(r.indikator) + '" placeholder="mis. Menentukan fungsi enzim">' +
         '<select class="k-tipe" data-id="' + r.id + '">' + tipeOpt + '</select>' +
         '<select class="k-level" data-id="' + r.id + '">' + lvlOpt + '</select>' +
         '<input type="number" class="k-jml" data-id="' + r.id + '" min="0" max="50" value="' + r.jumlah + '">' +
@@ -526,6 +529,7 @@
       '</select>' +
       (q.level ? '<span class="q-level">' + esc(q.level) + '</span>' : '') +
       (q.materi ? '<span class="q-level" title="Materi (kisi-kisi)">' + esc(q.materi) + '</span>' : '') +
+      (q.indikator ? '<span class="q-level q-ind" title="' + esc(q.indikator) + '">' + esc(q.indikator) + '</span>' : '') +
       (q.warning ? '<span class="q-level" style="color:var(--warn)">' + esc(q.warning) + '</span>' : '') +
       '<span class="q-points">poin <input type="number" class="q-points-input" data-i="' + i + '" min="0" step="1" value="' + esc(q.points) + '"></span>' +
       '<span class="q-tools">' +
@@ -745,6 +749,7 @@
       stimulus: String(q.stimulus || q.wacana || q.bacaan || ''),
       pakaiStimulus: !!(q.pakaiStimulus || q.pakai_stimulus || q.stimulus || q.wacana),
       materi: String(q.materi || ''),
+      indikator: String(q.indikator || ''),
       warning: q.warning || ''
     };
   }
@@ -1557,10 +1562,10 @@
     setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
     setChips('chips-level', ['C3', 'C4', 'C5']);
     state.kisi = [
-      kisiBaru({ materi: 'Organ pencernaan', tipe: 'pg', level: 'C3', jumlah: 4, wacana: false }),
-      kisiBaru({ materi: 'Enzim pencernaan', tipe: 'pg', level: 'C4', jumlah: 3, wacana: true }),
-      kisiBaru({ materi: 'Gangguan pencernaan', tipe: 'pg_kompleks', level: 'C4', jumlah: 2, wacana: false }),
-      kisiBaru({ materi: 'Kesehatan pencernaan', tipe: 'essay', level: 'C5', jumlah: 1, wacana: false })
+      kisiBaru({ materi: 'Organ pencernaan', indikator: 'Menyebutkan organ penyusun sistem pencernaan', tipe: 'pg', level: 'C3', jumlah: 4, wacana: false }),
+      kisiBaru({ materi: 'Enzim pencernaan', indikator: 'Menganalisis peran enzim pada pencernaan kimiawi', tipe: 'pg', level: 'C4', jumlah: 3, wacana: true }),
+      kisiBaru({ materi: 'Gangguan pencernaan', indikator: 'Mengelompokkan gangguan sistem pencernaan', tipe: 'pg_kompleks', level: 'C4', jumlah: 2, wacana: false }),
+      kisiBaru({ materi: 'Kesehatan pencernaan', indikator: 'Menilai pentingnya pola makan sehat', tipe: 'essay', level: 'C5', jumlah: 1, wacana: false })
     ];
     renderKisi();
     $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
@@ -1659,6 +1664,7 @@
         (state.kisi || []).forEach(function (r) { if (r.id === id) row = r; });
         if (!row) return;
         if (t.classList.contains('k-materi')) row.materi = t.value;
+        else if (t.classList.contains('k-indikator')) row.indikator = t.value;
         else if (t.classList.contains('k-jml')) {
           row.jumlah = Math.max(0, Math.min(50, Number(t.value) || 0));
           renderKisiNomor();
