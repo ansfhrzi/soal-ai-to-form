@@ -366,10 +366,10 @@
   }
 
   function validateSpec(s) {
-    if (!s.topik && !s.materi) { toast('Topik / materi wajib diisi.', 'err'); $('f-topik').focus(); return false; }
     if (s.mode === 'advanced') {
       if (!s.kisi || !s.kisi.length) { toast('Mode advanced: isi minimal satu baris kisi-kisi.', 'err'); return false; }
     } else {
+      if (!s.topik && !s.materi) { toast('Topik / materi wajib diisi.', 'err'); $('f-topik').focus(); return false; }
       if (!s.tipe.length) { toast('Pilih minimal satu tipe soal.', 'err'); return false; }
       if (!s.level.length) { toast('Pilih minimal satu level kognitif.', 'err'); return false; }
     }
@@ -654,7 +654,7 @@
   /* ========================== 7. REGENERATE 1 SOAL ========================== */
   function regenOne(i, btn) {
     var spec = collectSpec();
-    if (!spec.topik && !spec.materi) { toast('Topik belum diisi.', 'err'); goto(1); return; }
+    if (spec.mode !== 'advanced' && !spec.topik && !spec.materi) { toast('Topik belum diisi.', 'err'); goto(1); return; }
 
     if (state.demo) {
       var dq = demoQuestions(spec)[i % 6];

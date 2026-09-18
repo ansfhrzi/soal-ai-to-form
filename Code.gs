@@ -454,7 +454,8 @@ function tempelWacanaKeSoal_(q, stimulusGlobal) {
 /** Validasi ringan konfigurasi soal sebelum memanggil AI. */
 function validateSpec_(spec) {
   spec = spec || {};
-  if (!String(spec.topik || spec.materi || '').trim()) {
+  var kisiOk = spec.mode === 'advanced' && Array.isArray(spec.kisi) && spec.kisi.length;
+  if (!kisiOk && !String(spec.topik || spec.materi || '').trim()) {
     throw new Error('Topik / materi soal wajib diisi.');
   }
   var n = Number(spec.jumlah || 0);

@@ -125,6 +125,12 @@
               </label>
             </div>
 
+            <div class="mode-tabs" id="genModeTabs">
+              <button type="button" class="mode-tab is-active" data-genmode="standard">Standard</button>
+              <button type="button" class="mode-tab" data-genmode="advanced">Advanced (Kisi-kisi)</button>
+            </div>
+
+            <div id="genmode-standard">
             <label class="field">
               <span>Topik / materi <b class="req">*</b></span>
               <input id="f-topik" placeholder="Contoh: Sistem pencernaan manusia dan enzim-enzimnya">
@@ -141,11 +147,6 @@
               <textarea id="f-indikator" rows="2"
                 placeholder="Disajikan data makanan, peserta didik dapat menentukan enzim yang berperan…"></textarea>
             </label>
-
-            <div class="mode-tabs" id="genModeTabs">
-              <button type="button" class="mode-tab is-active" data-genmode="standard">Standard</button>
-              <button type="button" class="mode-tab" data-genmode="advanced">Advanced (Kisi-kisi)</button>
-            </div>
 
             <div class="row-4" id="rowUtama">
               <label class="field" id="fJumlahWrap">
@@ -181,7 +182,6 @@
               </label>
             </div>
 
-            <div id="genmode-standard">
             <div class="field" id="wacanaBox">
               <span>Soal wacana <small class="hint">(opsional — beberapa soal berbagi satu bacaan)</small></span>
               <div id="wacanaList"></div>
