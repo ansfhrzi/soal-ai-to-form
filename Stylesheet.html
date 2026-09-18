@@ -268,6 +268,32 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .wacana-row input.w-jml { max-width: 110px; }
 #wacanaBox #btnAddWacana { margin: 2px 0 6px; }
 
+/* kisi-kisi (mode advanced): tabel kelompok soal ala blueprint */
+.kisi-table { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.kisi-row {
+  display: grid; grid-template-columns: 26px minmax(110px, 1fr) minmax(130px, 1.2fr) 118px 60px 50px 54px 94px 50px 62px 28px;
+  gap: 7px; align-items: center; min-width: 920px;
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.kisi-row.kisi-head {
+  background: transparent; border: 0; padding: 0 10px;
+  font-size: 11.6px; font-weight: 700; color: var(--muted);
+}
+.kisi-row.kisi-head span:nth-child(6),
+.kisi-row.kisi-head span:nth-child(7),
+.kisi-row.kisi-head span:nth-child(9),
+.kisi-row.kisi-head span:nth-child(10) { text-align: center; }
+.kisi-no { font-weight: 700; font-size: 12.6px; color: var(--muted); text-align: center; }
+.kisi-row input[type="text"], .kisi-row input[type="number"], .kisi-row select {
+  padding: 7px 8px; font-size: 12.8px;
+}
+.kisi-row input[type="number"] { text-align: center; }
+.kisi-row input[type="checkbox"].k-wac { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; justify-self: center; }
+.kisi-range { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--primary); text-align: center; white-space: nowrap; }
+.kisi-row .k-del { justify-self: center; }
+
+
 /* switch */
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: 0 0 auto; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -334,6 +360,9 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 .result a:hover { border-color: var(--primary); color: var(--primary); }
 .result .meta { margin-top: 10px; font-size: 12.4px; color: var(--muted); }
+.result .link-row { display: flex; gap: 8px; align-items: stretch; }
+.result .link-row a { flex: 1 1 auto; min-width: 0; }
+.result .link-row .btn { flex: 0 0 auto; }
 
 /* ============================== DAFTAR SOAL ============================== */
 .summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -364,6 +393,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   background: var(--accent-soft); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .q-level { padding: 4px 9px; border-radius: 999px; font-size: 11.4px; font-weight: 700; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); }
+.q-level.q-ind { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-points { margin-left: auto; font-size: 12.4px; color: var(--muted); font-weight: 600; }
 .q-points input { width: 62px; padding: 4px 7px; font-size: 12.5px; text-align: center; }
 .q-tools { display: flex; gap: 6px; }
@@ -457,21 +487,10 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-soft); p
 
 /* cetak */
 @media print {
-  .topbar, .toolbar, .actions, .overlay, .toasts, .banner, .key-status { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); }
-.key-status .ks-empty { padding: 12px; font-size: 12.8px; color: var(--muted); margin: 0; }
-.ks-head { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12.4px; }
-.ks-item { display: flex; align-items: center; gap: 7px; padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 12.8px; }
-.ks-item:last-child { border-bottom: 0; }
-.ks-label { font-family: var(--mono); font-weight: 700; min-width: 52px; }
-.ks-tail { font-family: var(--mono); color: var(--muted); }
-.ks-badge { margin-left: auto; padding: 2px 9px; border-radius: 999px; font-size: 11.4px; font-weight: 700; }
-.ks-badge.siap { background: var(--ok-soft); color: var(--ok); }
-.ks-badge.istirahat { background: var(--warn-soft); color: var(--warn); }
-.ks-badge.bermasalah { background: var(--danger-soft); color: var(--danger); }
-.ks-cursor { font-size: 11.4px; color: var(--primary); font-weight: 700; }
-code { font-family: var(--mono); font-size: .92em; background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; }
-
-.footer { display: none !important; }
-  .card { box-shadow: none; border-color: #ccc; }
+  .topbar, .toolbar, .actions, .overlay, .toasts, .banner, .footer { display: none !important; }
+  body::before { display: none; }
+  .app { max-width: none; padding: 0; }
+  .card { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+  .q-card { break-inside: avoid; }
 }
 </style>

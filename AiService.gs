@@ -1002,8 +1002,9 @@ var AiService = (function () {
   }
 
   function buildSystemInstruction_(spec) {
+    spec = spec || {};
     var lang = spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia';
-    return [
+    var aturan = [
       'Anda adalah guru dan penulis soal asesmen profesional yang berpengalaman membuat soal HOTS,',
       'soal AKM/ANBK, dan soal ujian sekolah. Tugas Anda menghasilkan soal yang valid, tidak ambigu,',
       'satu kunci jawaban yang pasti benar, dan pengecoh (distractor) yang masuk akal.',
@@ -1034,11 +1035,18 @@ var AiService = (function () {
       '12. Jangan membuat opsi seperti "Semua jawaban benar" / "A dan B benar".',
       '13. "pembahasan" ringkas 1-3 kalimat: konsep yang diuji & mengapa opsi lain salah.',
       '14. Sebar level kognitif sesuai permintaan dan hindari pengulangan konsep yang sama.'
-    ].join('\n');
+    ];
+    if (spec && spec.mode === 'advanced') {
+      aturan.push('15. KISI-KISI: patuhi seluruh kolom (tipe, level, materi, indikator, kesulitan, wacana) pada TIAP nomor soal sesuai daftar. Jangan menukar urutan.');
+    }
+    return aturan.join('\n');
   }
 
   function ringkasWacana_(spec) {
     spec = spec || {};
+    if (spec.mode === 'advanced' && Array.isArray(spec.kisi) && spec.kisi.length) {
+      return ringkasKisi_(spec.kisi);
+    }
     var grup = [];
     var raw = spec.wacanaGrup;
     if (Array.isArray(raw)) {
@@ -1056,11 +1064,104 @@ var AiService = (function () {
     return { mandiri: mandiri, grup: grup, total: total };
   }
 
+  var LABEL_TIPE_KISI_ = {
+    pg: 'Pilihan Ganda (PG)',
+    pg_kompleks: 'PG Kompleks',
+    dropdown: 'Dropdown',
+    isian: 'Isian Singkat',
+    essay: 'Essay'
+  };
+  function labelTipe_(t) { return LABEL_TIPE_KISI_[t] || t; }
+
+  /**
+   * Ubah kisi-kisi mode advanced jadi rencana posisional per nomor soal.
+   * Tiap baris = satu kelompok homogen (satu materi, satu tipe, satu level).
+   * Baris bertanda wacana memakai SATU wacana bersama utk seluruh kelompoknya.
+   * @return {mandiri, grup, total, rencana:[{tipe, grup, level, materi, indikator, poin, kesulitan}], advanced, tipeList, rincianTipe}
+   *   grup = -1 berarti mandiri; >= 0 berarti indeks grup wacana.
+   */
+  function ringkasKisi_(kisi) {
+    var rencana = [];
+    var grup = [];
+    var tipeList = [];
+    var rinc = [];
+    kisi.forEach(function (r) {
+      var tipe = String((r && r.tipe) || 'pg');
+      var jumlah = Math.max(0, Math.min(50, Number(r && r.jumlah) || 0));
+      if (jumlah < 1) return;
+      if (tipeList.indexOf(tipe) === -1) tipeList.push(tipe);
+      var level = String((r && r.level) || '').trim();
+      var materi = String((r && r.materi) || '').trim();
+      var indikator = String((r && r.indikator) || '').trim();
+      var poin = Math.max(1, Math.min(100, Number(r && r.poin) || 0)) || 10;
+      var kesulitan = String((r && r.kesulitan) || 'sedang');
+      if (['mudah', 'sedang', 'sulit', 'campuran'].indexOf(kesulitan) === -1) kesulitan = 'sedang';
+      var wacana = !!(r && r.wacana);
+      rinc.push(labelTipe_(tipe) + ' ×' + jumlah + ' (' + [level || '-', kesulitan].join(', ') + ')' +
+        (wacana ? ' [wacana]' : '') + (materi ? ' — ' + materi : ''));
+      var gi = -1;
+      if (wacana) { gi = grup.length; grup.push(jumlah); }
+      for (var i = 0; i < jumlah; i++) {
+        rencana.push({ tipe: tipe, grup: gi, level: level, materi: materi, indikator: indikator,
+          poin: poin, kesulitan: kesulitan });
+      }
+    });
+    var mandiri = 0;
+    rencana.forEach(function (x) { if (x.grup < 0) mandiri++; });
+    return {
+      mandiri: mandiri,
+      grup: grup,
+      total: rencana.length < 1 ? 1 : rencana.length,
+      rencana: rencana,
+      advanced: true,
+      tipeList: tipeList,
+      rincianTipe: rinc.join('; ') || 'Pilihan Ganda (PG) ×1'
+    };
+  }
+
+  /** Blok kisi-kisi utk prompt mode advanced: tiap baris = satu kelompok soal. */
+  function kisiBlock_(lines, ringkas) {
+    lines.push('', 'KISI-KISI (WAJIB dipatuhi — urutan, tipe, level, dan wacana tiap nomor soal):');
+    var blok = [];
+    ringkas.rencana.forEach(function (r, i) {
+      var last = blok[blok.length - 1];
+      if (last && last.tipe === r.tipe && last.grup === r.grup &&
+          last.level === r.level && last.materi === r.materi &&
+          last.indikator === r.indikator && last.poin === r.poin &&
+          last.kesulitan === r.kesulitan) last.sampai = i + 1;
+      else blok.push({ tipe: r.tipe, grup: r.grup, level: r.level, materi: r.materi,
+        indikator: r.indikator, poin: r.poin, kesulitan: r.kesulitan,
+        dari: i + 1, sampai: i + 1 });
+    });
+    blok.forEach(function (b) {
+      var rentang = b.dari === b.sampai ? ('Soal ' + b.dari) : ('Soal ' + b.dari + '–' + b.sampai);
+      var ket = labelTipe_(b.tipe) + (b.level ? ', level ' + b.level : '') +
+        (b.materi ? ', materi: ' + b.materi : '') +
+        (b.indikator ? ', indikator: ' + b.indikator : '') +
+        ', kesulitan: ' + (b.kesulitan || 'sedang') +
+        ', bobot ' + (b.poin || 10) + ' poin';
+      if (b.grup < 0) {
+        lines.push('- ' + rentang + ': ' + ket + '. MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
+      } else if (b.dari === b.sampai) {
+        lines.push('- ' + rentang + ': ' + ket + '. Memakai SATU wacana sendiri tentang materi tersebut. Tulis wacana di "stimulus", kalimat tanya di "pertanyaan".');
+      } else {
+        lines.push('- ' + rentang + ': ' + ket + '. SATU wacana bersama (wacana ' + (b.grup + 1) + ') tentang materi tersebut. Isi "stimulus" yang SAMA pada soal-soal ini;',
+          '  "pertanyaan" hanya kalimat tanya yang merujuk wacana itu. Jangan salin wacana ke pertanyaan.');
+      }
+    });
+    lines.push('Jangan mengubah urutan/tipe/level tiap nomor. Total tepat ' + ringkas.total + ' soal.');
+  }
+
   function buildPrompt_(spec) {
     var ringkas = ringkasWacana_(spec);
     var n = ringkas.total;
-    var tipeList = (spec.tipe && spec.tipe.length ? spec.tipe : ['pg']).join(', ');
-    var levelList = (spec.level && spec.level.length ? spec.level : ['C3', 'C4']).join(', ');
+    var adv = !!(ringkas.advanced && ringkas.rencana);
+    var tipeList = adv && ringkas.rincianTipe
+      ? ringkas.rincianTipe
+      : (spec.tipe && spec.tipe.length ? spec.tipe : ['pg']).join(', ');
+    var levelList = adv
+      ? 'bervariasi per baris (lihat KISI-KISI)'
+      : (spec.level && spec.level.length ? spec.level : ['C3', 'C4']).join(', ');
     var komposisi = {
       mudah: '70% mudah, 20% sedang, 10% sulit',
       sedang: '20% mudah, 60% sedang, 20% sulit',
@@ -1075,10 +1176,14 @@ var AiService = (function () {
       'Kelas / jenjang  : ' + (spec.kelas || '-'),
       'Kurikulum        : ' + (spec.kurikulum || 'Kurikulum Merdeka'),
       'Topik / materi   : ' + (spec.topik || '-'),
-      'Tipe soal        : ' + tipeList + ' (patuhi proporsi bila lebih dari satu tipe)',
+      'Tipe soal        : ' + tipeList + (adv
+        ? ' (JUMLAH PASTI sesuai kisi-kisi di bawah — bukan sekadar proporsi)'
+        : ' (patuhi proporsi bila lebih dari satu tipe)'),
       'Level kognitif   : ' + levelList,
-      'Tingkat kesulitan: ' + spec.kesulitan + ' → komposisi: ' + komposisi,
-      'Poin per soal    : ' + (spec.poin || 1),
+      (adv ? 'Tingkat kesulitan: bervariasi per baris (lihat KISI-KISI)'
+        : 'Tingkat kesulitan: ' + spec.kesulitan + ' → komposisi: ' + komposisi),
+      (adv ? 'Poin per soal    : bervariasi per baris (lihat KISI-KISI)'
+        : 'Poin per soal    : ' + (spec.poin || 1)),
       'Bahasa           : ' + (spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia'),
       'Pembahasan       : ' + (spec.pembahasan === false ? 'tetap isi singkat' : 'wajib ada'),
       'Gaya/preset      : ' + (spec.preset || 'umum')
@@ -1097,7 +1202,9 @@ var AiService = (function () {
         'DILARANG merujuk audio/gambar/video. Jika butuh transkrip/data, tulis teksnya di "pertanyaan"',
         '(soal mandiri) atau di "stimulus" (hanya jika guru minta soal wacana bersama).');
     }
-    if (ringkas.grup.length) {
+    if (adv) {
+      kisiBlock_(lines, ringkas);
+    } else if (ringkas.grup.length) {
       lines.push('', 'KOMPOSISI WACANA (wajib dipatuhi, urutan soal sesuai nomor):');
       var mulai = 1;
       if (ringkas.mandiri > 0) {
@@ -1132,9 +1239,15 @@ var AiService = (function () {
   function generateQuestions(spec) {
     spec = spec || {};
     var ringkas = ringkasWacana_(spec);
+    if (ringkas.total > 50) {
+      throw _err('VALIDASI_GAGAL', 'Jumlah soal maksimal 50 (diminta ' + ringkas.total + '). Bagi menjadi beberapa kali generate.');
+    }
     spec.jumlah = ringkas.total;
     spec.jumlahMandiri = ringkas.mandiri;
     spec.wacanaGrup = ringkas.grup.map(function (j) { return { jumlah: j }; });
+    if (ringkas.advanced && ringkas.tipeList && ringkas.tipeList.length) {
+      spec.tipe = ringkas.tipeList;
+    }
     var mulai = Date.now();
     var deadline = mulai + BATAS_TOTAL_MS;
     var percobaanParse = 0, lastErr = null;
@@ -1488,7 +1601,41 @@ var AiService = (function () {
 
     hasil = hasil.filter(function (q) { return q.text && q.text.length > 1; });
     var plan = ringkasWacana_(spec);
-    if (plan.grup.length) {
+    if (plan.advanced && plan.rencana) {
+      /* Mode advanced: paksa level & status wacana per nomor sesuai kisi,
+         catat materi, dan tandai tipe yang menyimpang (tipe tidak dipaksa
+         karena bisa merusak kunci jawaban). */
+      hasil.forEach(function (item, i) {
+        var r = plan.rencana[i];
+        if (!r) return;
+        if (r.level) item.level = r.level;
+        item.materi = r.materi || '';
+        item.indikator = r.indikator || '';
+        if (r.poin) item.points = r.poin;
+        item.kesulitan = r.kesulitan || '';
+        if (r.grup < 0) {
+          if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
+          item.stimulus = '';
+          item.pakaiStimulus = false;
+        }
+        if (item.type !== r.tipe) {
+          var cat = 'Kisi meminta ' + labelTipe_(r.tipe) + ' (dapat ' + labelTipe_(item.type) + ')';
+          item.warning = item.warning ? (item.warning + '; ' + cat) : cat;
+        }
+      });
+      plan.grup.forEach(function (jml, gi) {
+        var idx = [];
+        plan.rencana.forEach(function (r, i) { if (r.grup === gi && i < hasil.length) idx.push(i); });
+        var first = '';
+        idx.forEach(function (i) { if (!first && hasil[i].stimulus) first = hasil[i].stimulus; });
+        idx.forEach(function (i) {
+          if (first) {
+            if (!hasil[i].stimulus) hasil[i].stimulus = first;
+            hasil[i].pakaiStimulus = true;
+          }
+        });
+      });
+    } else if (plan.grup.length) {
       hasil.forEach(function (item, i) {
         if (i < plan.mandiri) {
           if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
@@ -1600,25 +1747,6 @@ var AiService = (function () {
     toIndexArray_: toIndexArray_,
     gabungStimulus_: gabungStimulus_,
     tabelMarkdownKeHtml: tabelMarkdownKeHtml,
-
-    /* diagnostik */
-    _ambilTeks: _ambilTeks,
-    _terpotong: _terpotong,
-    _pesanError: _pesanError,
-    _bersihkanJson: _bersihkanJson,
-    _daftarModel: _daftarModel,
-    _keys: _keys,
-    _gayaThink: _gayaThink,
-    _levelThink: _levelThink,
-    _muatan: _muatan,
-    _err: _err,
-
-    MODEL: MODEL,
-    MODEL_BAWAAN: MODEL_BAWAAN,
-    BATAS_TOTAL_MS: BATAS_TOTAL_MS
-  };
-})();
- tabelMarkdownKeHtml: tabelMarkdownKeHtml,
 
     /* diagnostik */
     _ambilTeks: _ambilTeks,
