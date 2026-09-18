@@ -75,7 +75,7 @@
             </div>
 
             <div id="mode-ai">
-            <div class="row-3">
+            <div class="row-4">
               <label class="field">
                 <span>Mata pelajaran</span>
                 <input id="f-mapel" list="dl-mapel" placeholder="IPA, Matematika, B. Indonesia…">
@@ -123,6 +123,14 @@
                   <option value="Umum">Umum / bebas</option>
                 </select>
               </label>
+
+              <label class="field">
+                <span>Bahasa soal</span>
+                <select id="f-bahasa">
+                  <option value="id" selected>Bahasa Indonesia</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
             </div>
 
             <div class="mode-tabs" id="genModeTabs">
@@ -148,7 +156,7 @@
                 placeholder="Disajikan data makanan, peserta didik dapat menentukan enzim yang berperan…"></textarea>
             </label>
 
-            <div class="row-4" id="rowUtama">
+            <div class="row-3" id="rowUtama">
               <label class="field" id="fJumlahWrap">
                 <span>Jumlah soal <small class="hint">(mandiri, tanpa wacana)</small></span>
                 <div class="stepper-input">
@@ -173,13 +181,6 @@
                 </select>
               </label>
 
-              <label class="field">
-                <span>Bahasa soal</span>
-                <select id="f-bahasa">
-                  <option value="id" selected>Bahasa Indonesia</option>
-                  <option value="en">English</option>
-                </select>
-              </label>
             </div>
 
             <div class="field" id="wacanaBox">

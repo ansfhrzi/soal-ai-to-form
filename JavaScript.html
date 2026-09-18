@@ -58,7 +58,6 @@
       jumlah: Math.max(1, Math.min(50, Number(isi.jumlah) || 2)),
       poin: Math.max(1, Math.min(100, Number(isi.poin) || 10)),
       kesulitan: ['mudah', 'sedang', 'sulit', 'campuran'].indexOf(isi.kesulitan) !== -1 ? isi.kesulitan : 'sedang',
-      bahasa: isi.bahasa === 'en' ? 'en' : 'id',
       wacana: !!isi.wacana
     };
   }
@@ -255,7 +254,6 @@
         jumlah: Math.max(1, Math.min(50, Number(r.jumlah) || 0)),
         poin: Math.max(1, Math.min(100, Number(r.poin) || 0)) || 10,
         kesulitan: ['mudah', 'sedang', 'sulit', 'campuran'].indexOf(r.kesulitan) !== -1 ? r.kesulitan : 'sedang',
-        bahasa: r.bahasa === 'en' ? 'en' : 'id',
         wacana: !!r.wacana
       };
     });
@@ -266,7 +264,7 @@
     if (!box) return;
     var html = '<div class="kisi-row kisi-head"><span>No</span><span>Materi / pokok bahasan</span>' +
       '<span>Indikator soal</span><span>Bentuk soal</span><span>Level</span><span>Jml</span><span>Poin</span>' +
-      '<span>Kesulitan</span><span>Bahasa</span><span>Wacana</span><span>No. soal</span><span></span></div>';
+      '<span>Kesulitan</span><span>Wacana</span><span>No. soal</span><span></span></div>';
     var no = 1;
     html += (state.kisi || []).map(function (r, i) {
       var jml = Math.max(0, Math.min(50, Number(r.jumlah) || 0));
@@ -281,9 +279,6 @@
       var sultOpt = [['mudah', 'Mudah'], ['sedang', 'Sedang'], ['sulit', 'Sulit'], ['campuran', 'Campuran']].map(function (o) {
         return '<option value="' + o[0] + '"' + (r.kesulitan === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
       }).join('');
-      var bhsOpt = [['id', 'ID'], ['en', 'EN']].map(function (o) {
-        return '<option value="' + o[0] + '"' + (r.bahasa === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
-      }).join('');
       return '<div class="kisi-row" data-id="' + r.id + '">' +
         '<span class="kisi-no">' + (i + 1) + '</span>' +
         '<input type="text" class="k-materi" data-id="' + r.id + '" value="' + esc(r.materi) + '" placeholder="mis. Sistem pencernaan">' +
@@ -293,7 +288,6 @@
         '<input type="number" class="k-jml" data-id="' + r.id + '" min="0" max="50" value="' + r.jumlah + '" title="Jumlah soal">' +
         '<input type="number" class="k-poin" data-id="' + r.id + '" min="1" max="100" value="' + r.poin + '" title="Poin per soal">' +
         '<select class="k-sulit" data-id="' + r.id + '" title="Tingkat kesulitan">' + sultOpt + '</select>' +
-        '<select class="k-bhs" data-id="' + r.id + '" title="Bahasa soal">' + bhsOpt + '</select>' +
         '<input type="checkbox" class="k-wac" data-id="' + r.id + '"' + (r.wacana ? ' checked' : '') + ' title="Kelompok ini memakai satu wacana bersama">' +
         '<span class="kisi-range">' + rentang + '</span>' +
         '<button type="button" class="opt-del k-del" data-id="' + r.id + '" title="Hapus baris">✕</button>' +
@@ -328,7 +322,7 @@
     el.textContent = 'Total: ' + tot + ' soal · ' + poin + ' poin (' + (tot - wac) + ' mandiri + ' + wac + ' wacana) · ' +
       rows.map(function (r) {
         return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah + ' (' + r.level + ', ' + r.kesulitan +
-          ', ' + r.poin + ' poin' + (r.bahasa === 'en' ? ', EN' : '') + (r.wacana ? ', wacana' : '') +
+          ', ' + r.poin + ' poin' + (r.wacana ? ', wacana' : '') +
           (r.materi ? ', ' + r.materi : '') + ')';
       }).join('; ') + '.';
   }
@@ -400,7 +394,7 @@
     var tipe = state.genMode === 'advanced'
       ? (tt.kisi || []).map(function (r) {
           return (TIPE_LABEL[r.tipe] || r.tipe) + ' ×' + r.jumlah + ' (' + r.level + ', ' + r.kesulitan +
-            (r.bahasa === 'en' ? ', EN' : '') + (r.wacana ? ', wacana' : '') + ')';
+            (r.wacana ? ', wacana' : '') + ')';
         })
       : chipsValues('chips-tipe');
     var tokens = 2048 + n * 900;
@@ -768,7 +762,6 @@
       materi: String(q.materi || ''),
       indikator: String(q.indikator || ''),
       kesulitan: String(q.kesulitan || ''),
-      bahasa: String(q.bahasa || ''),
       warning: q.warning || ''
     };
   }
@@ -1607,10 +1600,10 @@
     setChips('chips-tipe', ['pg', 'pg_kompleks', 'essay']);
     setChips('chips-level', ['C3', 'C4', 'C5']);
     state.kisi = [
-      kisiBaru({ materi: 'Organ pencernaan', indikator: 'Menyebutkan organ penyusun sistem pencernaan', tipe: 'pg', level: 'C3', jumlah: 4, poin: 10, kesulitan: 'mudah', bahasa: 'id', wacana: false }),
-      kisiBaru({ materi: 'Enzim pencernaan', indikator: 'Menganalisis peran enzim pada pencernaan kimiawi', tipe: 'pg', level: 'C4', jumlah: 3, poin: 10, kesulitan: 'sedang', bahasa: 'id', wacana: true }),
-      kisiBaru({ materi: 'Gangguan pencernaan', indikator: 'Mengelompokkan gangguan sistem pencernaan', tipe: 'pg_kompleks', level: 'C4', jumlah: 2, poin: 15, kesulitan: 'sulit', bahasa: 'id', wacana: false }),
-      kisiBaru({ materi: 'Kesehatan pencernaan', indikator: 'Menilai pentingnya pola makan sehat', tipe: 'essay', level: 'C5', jumlah: 1, poin: 20, kesulitan: 'sulit', bahasa: 'id', wacana: false })
+      kisiBaru({ materi: 'Organ pencernaan', indikator: 'Menyebutkan organ penyusun sistem pencernaan', tipe: 'pg', level: 'C3', jumlah: 4, poin: 10, kesulitan: 'mudah', wacana: false }),
+      kisiBaru({ materi: 'Enzim pencernaan', indikator: 'Menganalisis peran enzim pada pencernaan kimiawi', tipe: 'pg', level: 'C4', jumlah: 3, poin: 10, kesulitan: 'sedang', wacana: true }),
+      kisiBaru({ materi: 'Gangguan pencernaan', indikator: 'Mengelompokkan gangguan sistem pencernaan', tipe: 'pg_kompleks', level: 'C4', jumlah: 2, poin: 15, kesulitan: 'sulit', wacana: false }),
+      kisiBaru({ materi: 'Kesehatan pencernaan', indikator: 'Menilai pentingnya pola makan sehat', tipe: 'essay', level: 'C5', jumlah: 1, poin: 20, kesulitan: 'sulit', wacana: false })
     ];
     renderKisi();
     $('f-instruksi').value = 'Gunakan konteks kehidupan sehari-hari siswa SMP di Indonesia.';
@@ -1730,7 +1723,6 @@
         if (t.classList.contains('k-tipe')) row.tipe = t.value;
         else if (t.classList.contains('k-level')) row.level = t.value;
         else if (t.classList.contains('k-sulit')) row.kesulitan = t.value;
-        else if (t.classList.contains('k-bhs')) row.bahasa = t.value;
         else if (t.classList.contains('k-wac')) row.wacana = t.checked;
         else if (t.classList.contains('k-jml')) {
           row.jumlah = Math.max(0, Math.min(50, Number(t.value) || 0));
@@ -1760,7 +1752,7 @@
         if ((state.kisi || []).length >= 20) { toast('Maksimal 20 baris kisi-kisi.', 'warn'); return; }
         var last = (state.kisi || [])[(state.kisi || []).length - 1] || {};
         state.kisi.push(kisiBaru({ tipe: last.tipe || 'pg', level: last.level || 'C4', jumlah: 2,
-          poin: last.poin || 10, kesulitan: last.kesulitan || 'sedang', bahasa: last.bahasa || 'id', wacana: false }));
+          poin: last.poin || 10, kesulitan: last.kesulitan || 'sedang', wacana: false }));
         renderKisi();
       });
     }
