@@ -767,6 +767,25 @@
     }
   }
 
+  /** Salin teks ke clipboard (dengan fallback untuk iframe sandbox). */
+  function copyText(txt, okMsg) {
+    txt = String(txt || '');
+    if (!txt) { toast('Tidak ada tautan untuk disalin.', 'warn'); return; }
+    function done(ok) { toast(ok ? (okMsg || 'Disalin.') : 'Gagal menyalin.', ok ? 'ok' : 'warn'); }
+    function fallback() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        var ok = document.execCommand('copy');
+        ta.remove(); done(!!ok);
+      } catch (e) { done(false); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () { done(true); }, function () { fallback(); });
+    } else { fallback(); }
+  }
+
   function copyJson() {
     var txt = $('jsonArea').value || JSON.stringify({ soal: state.questions }, null, 2);
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1243,7 +1262,10 @@
       '<h4>' + (r.demo ? '🧪 Hasil (mode demo)' : '✅ Google Form berhasil dibuat') + '</h4>' +
       '<div class="links">' +
       '<a href="' + esc(r.editUrl) + '" target="_blank" rel="noopener">📝 Buka Form untuk diedit</a>' +
+      '<div class="link-row">' +
       '<a href="' + esc(r.publishUrl) + '" target="_blank" rel="noopener">🔗 Link form untuk siswa (bagikan ini)</a>' +
+      '<button type="button" class="btn small" id="btnCopyLink" title="Salin link untuk dibagikan ke siswa">📋 Salin</button>' +
+      '</div>' +
       (r.kunci && r.kunci.url ? '<a href="' + esc(r.kunci.url) + '" target="_blank" rel="noopener">🔑 Spreadsheet kunci jawaban</a>' : '') +
       (r.folderUrl ? '<a href="' + esc(r.folderUrl) + '" target="_blank" rel="noopener">📁 Folder Drive: ' + esc(r.folderName || '') + '</a>' : '') +
       '</div>' +
@@ -1255,6 +1277,10 @@
     var box = $('resultBox');
     box.className = 'result';
     box.innerHTML = html;
+    var btnSalin = $('btnCopyLink');
+    if (btnSalin) {
+      btnSalin.addEventListener('click', function () { copyText(r.publishUrl, 'Link form siswa disalin.'); });
+    }
     box.hidden = false;
     box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
