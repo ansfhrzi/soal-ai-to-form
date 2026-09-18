@@ -271,8 +271,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 /* kisi-kisi (mode advanced): tabel kelompok soal ala blueprint */
 .kisi-table { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .kisi-row {
-  display: grid; grid-template-columns: 28px minmax(120px, 1fr) minmax(150px, 1.4fr) 128px 62px 54px 54px 66px 30px;
-  gap: 8px; align-items: center; min-width: 780px;
+  display: grid; grid-template-columns: 26px minmax(110px, 1fr) minmax(130px, 1.2fr) 118px 60px 50px 54px 94px 72px 50px 62px 28px;
+  gap: 7px; align-items: center; min-width: 990px;
   padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--surface-2);
 }
@@ -282,7 +282,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 }
 .kisi-row.kisi-head span:nth-child(6),
 .kisi-row.kisi-head span:nth-child(7),
-.kisi-row.kisi-head span:nth-child(8) { text-align: center; }
+.kisi-row.kisi-head span:nth-child(10),
+.kisi-row.kisi-head span:nth-child(11) { text-align: center; }
 .kisi-no { font-weight: 700; font-size: 12.6px; color: var(--muted); text-align: center; }
 .kisi-row input[type="text"], .kisi-row input[type="number"], .kisi-row select {
   padding: 7px 8px; font-size: 12.8px;
@@ -291,9 +292,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .kisi-row input[type="checkbox"].k-wac { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; justify-self: center; }
 .kisi-range { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--primary); text-align: center; white-space: nowrap; }
 .kisi-row .k-del { justify-self: center; }
-#rowUtama.mode-advanced { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 760px) { #rowUtama.mode-advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px) { #rowUtama.mode-advanced { grid-template-columns: 1fr; } }
+
 
 /* switch */
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: 0 0 auto; }

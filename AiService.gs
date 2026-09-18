@@ -1003,7 +1003,17 @@ var AiService = (function () {
 
   function buildSystemInstruction_(spec) {
     spec = spec || {};
-    var lang = spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia';
+    var lang = (function () {
+      if (spec.mode === 'advanced' && spec.kisi && spec.kisi.length) {
+        var adaId = false, adaEn = false;
+        spec.kisi.forEach(function (r) {
+          if (String(r.bahasa || 'id').toLowerCase() === 'en') adaEn = true; else adaId = true;
+        });
+        if (adaEn && !adaId) return 'English';
+        if (adaEn && adaId) return 'mengikuti bahasa tiap nomor soal sesuai KISI-KISI';
+      }
+      return spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia';
+    })();
     var aturan = [
       'Anda adalah guru dan penulis soal asesmen profesional yang berpengalaman membuat soal HOTS,',
       'soal AKM/ANBK, dan soal ujian sekolah. Tugas Anda menghasilkan soal yang valid, tidak ambigu,',
@@ -1037,7 +1047,7 @@ var AiService = (function () {
       '14. Sebar level kognitif sesuai permintaan dan hindari pengulangan konsep yang sama.'
     ];
     if (spec && spec.mode === 'advanced') {
-      aturan.push('15. KISI-KISI: patuhi tipe, level kognitif, materi, dan status wacana (mandiri/berwacana) pada TIAP nomor soal sesuai daftar. Jangan menukar urutan.');
+      aturan.push('15. KISI-KISI: patuhi seluruh kolom (tipe, level, materi, indikator, kesulitan, bahasa, wacana) pada TIAP nomor soal sesuai daftar. Jangan menukar urutan.');
     }
     return aturan.join('\n');
   }
@@ -1077,7 +1087,7 @@ var AiService = (function () {
    * Ubah kisi-kisi mode advanced jadi rencana posisional per nomor soal.
    * Tiap baris = satu kelompok homogen (satu materi, satu tipe, satu level).
    * Baris bertanda wacana memakai SATU wacana bersama utk seluruh kelompoknya.
-   * @return {mandiri, grup, total, rencana:[{tipe, grup, level, materi, indikator}], advanced, tipeList, rincianTipe}
+   * @return {mandiri, grup, total, rencana:[{tipe, grup, level, materi, indikator, poin, kesulitan, bahasa}], advanced, tipeList, rincianTipe}
    *   grup = -1 berarti mandiri; >= 0 berarti indeks grup wacana.
    */
   function ringkasKisi_(kisi) {
@@ -1093,13 +1103,18 @@ var AiService = (function () {
       var level = String((r && r.level) || '').trim();
       var materi = String((r && r.materi) || '').trim();
       var indikator = String((r && r.indikator) || '').trim();
+      var poin = Math.max(1, Math.min(100, Number(r && r.poin) || 0)) || 10;
+      var kesulitan = String((r && r.kesulitan) || 'sedang');
+      if (['mudah', 'sedang', 'sulit', 'campuran'].indexOf(kesulitan) === -1) kesulitan = 'sedang';
+      var bahasa = String((r && r.bahasa) || 'id').toLowerCase() === 'en' ? 'en' : 'id';
       var wacana = !!(r && r.wacana);
-      rinc.push(labelTipe_(tipe) + ' ×' + jumlah + (level ? ' (' + level + ')' : '') +
+      rinc.push(labelTipe_(tipe) + ' ×' + jumlah + ' (' + [level || '-', kesulitan].join(', ') + ')' +
         (wacana ? ' [wacana]' : '') + (materi ? ' — ' + materi : ''));
       var gi = -1;
       if (wacana) { gi = grup.length; grup.push(jumlah); }
       for (var i = 0; i < jumlah; i++) {
-        rencana.push({ tipe: tipe, grup: gi, level: level, materi: materi, indikator: indikator });
+        rencana.push({ tipe: tipe, grup: gi, level: level, materi: materi, indikator: indikator,
+          poin: poin, kesulitan: kesulitan, bahasa: bahasa });
       }
     });
     var mandiri = 0;
@@ -1123,15 +1138,20 @@ var AiService = (function () {
       var last = blok[blok.length - 1];
       if (last && last.tipe === r.tipe && last.grup === r.grup &&
           last.level === r.level && last.materi === r.materi &&
-          last.indikator === r.indikator) last.sampai = i + 1;
+          last.indikator === r.indikator && last.poin === r.poin &&
+          last.kesulitan === r.kesulitan && last.bahasa === r.bahasa) last.sampai = i + 1;
       else blok.push({ tipe: r.tipe, grup: r.grup, level: r.level, materi: r.materi,
-        indikator: r.indikator, dari: i + 1, sampai: i + 1 });
+        indikator: r.indikator, poin: r.poin, kesulitan: r.kesulitan, bahasa: r.bahasa,
+        dari: i + 1, sampai: i + 1 });
     });
     blok.forEach(function (b) {
       var rentang = b.dari === b.sampai ? ('Soal ' + b.dari) : ('Soal ' + b.dari + '–' + b.sampai);
       var ket = labelTipe_(b.tipe) + (b.level ? ', level ' + b.level : '') +
         (b.materi ? ', materi: ' + b.materi : '') +
-        (b.indikator ? ', indikator: ' + b.indikator : '');
+        (b.indikator ? ', indikator: ' + b.indikator : '') +
+        ', kesulitan: ' + (b.kesulitan || 'sedang') +
+        ', bahasa: ' + (b.bahasa === 'en' ? 'English' : 'Indonesia') +
+        ', bobot ' + (b.poin || 10) + ' poin';
       if (b.grup < 0) {
         lines.push('- ' + rentang + ': ' + ket + '. MANDIRI. Seluruh teks (termasuk cerita panjang) di "pertanyaan". "stimulus" KOSONG.');
       } else if (b.dari === b.sampai) {
@@ -1172,9 +1192,12 @@ var AiService = (function () {
         ? ' (JUMLAH PASTI sesuai kisi-kisi di bawah — bukan sekadar proporsi)'
         : ' (patuhi proporsi bila lebih dari satu tipe)'),
       'Level kognitif   : ' + levelList,
-      'Tingkat kesulitan: ' + spec.kesulitan + ' → komposisi: ' + komposisi,
-      'Poin per soal    : ' + (spec.poin || 1),
-      'Bahasa           : ' + (spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia'),
+      (adv ? 'Tingkat kesulitan: bervariasi per baris (lihat KISI-KISI)'
+        : 'Tingkat kesulitan: ' + spec.kesulitan + ' → komposisi: ' + komposisi),
+      (adv ? 'Poin per soal    : bervariasi per baris (lihat KISI-KISI)'
+        : 'Poin per soal    : ' + (spec.poin || 1)),
+      (adv ? 'Bahasa           : bervariasi per baris (lihat KISI-KISI)'
+        : 'Bahasa           : ' + (spec.bahasa === 'en' ? 'English' : 'Bahasa Indonesia')),
       'Pembahasan       : ' + (spec.pembahasan === false ? 'tetap isi singkat' : 'wajib ada'),
       'Gaya/preset      : ' + (spec.preset || 'umum')
     ];
@@ -1601,6 +1624,9 @@ var AiService = (function () {
         if (r.level) item.level = r.level;
         item.materi = r.materi || '';
         item.indikator = r.indikator || '';
+        if (r.poin) item.points = r.poin;
+        item.kesulitan = r.kesulitan || '';
+        item.bahasa = r.bahasa || '';
         if (r.grup < 0) {
           if (item.stimulus) item.text = gabungStimulus_(item.stimulus, item.text);
           item.stimulus = '';
